@@ -139,18 +139,17 @@ XP_TOKEN_FIELDS = ["input_tokens", "output_tokens", "cache_creation_input_tokens
 DROP_CHANCE_ON_LEVELUP = 0.20    # rolled on every level-up
 DROP_CHANCE_ON_WIN     = 0.06    # rolled on every fight win
 
-# Cumulative thresholds, low roll = rare. Each tier gets noticeably more
-# probability than the one above it (Common is most common, Mythic rarest).
-# Level scaling in core.make_drop subtracts a small per-level boost from
-# the roll, so higher-level pets see the Mythic/Legendary bands more often
-# and the Common band less often.
+# Cumulative thresholds, low roll = rare. Base values are the L1 "vanilla"
+# distribution. Level scaling in core.make_drop subtracts a small per-level
+# boost from the roll, so higher-level pets see rarer bands more often.
+# Calibrated so Mythic tops out at ~5% at L100 (and stays much rarer below).
 ITEM_RARITY_TABLE = [
-    ("Mythic",    0.05),   # 5%
-    ("Legendary", 0.13),   # 8%
-    ("Epic",      0.25),   # 12%
-    ("Rare",      0.45),   # 20%
-    ("Uncommon",  0.70),   # 25%
-    ("Common",    1.00),   # 30%
+    ("Mythic",    0.005),   # 0.5% at L1, 5% at L100
+    ("Legendary", 0.030),   # 2.5% at L1, 7% at L100
+    ("Epic",      0.110),   # 8% at L1, 12.5% at L100
+    ("Rare",      0.250),   # 14% at L1, 18.5% at L100
+    ("Uncommon",  0.500),   # 25% at L1, 25% at L100
+    ("Common",    1.000),   # 50% at L1, 32% at L100
 ]
 
 
