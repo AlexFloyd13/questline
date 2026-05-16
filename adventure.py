@@ -238,6 +238,12 @@ _BIG_TREES   = [f for f in GROUND_FEATURES if len(f["art"]) >= 6]
 _XMAS_TREE   = next((f for f in _BIG_TREES if "[" in "".join(f["art"])), None)
 _XMAS_LIMIT  = 50  # max world positions to remember as "already collected"
 
+# --- Sky features ----------------------------------------------------------
+# Features that float IN THE AIR (above the canopy) instead of sitting on
+# the ground. Populated only by seasonal events — outside holidays, the
+# sky is clean.
+SKY_FEATURES = []
+
 # --- Seasonal events -------------------------------------------------------
 # The world subtly changes around real holidays. Each event either bumps an
 # existing feature's spawn rate or adds a holiday-only feature to
@@ -249,52 +255,53 @@ _XMAS_LIMIT  = 50  # max world positions to remember as "already collected"
 # without disrupting the main canopy/trunk alignment.
 
 def _apply_seasonal_events():
-    """Mutate GROUND_FEATURES based on the real-world date so the
-    landscape gets holiday flair. Every seasonal art piece stays 1-2
-    rows tall and uses chars that don't collide with year-round
-    features (no `\\@/`, `*|*`, `(***)`, etc.)."""
+    """Mutate GROUND_FEATURES (and SKY_FEATURES for things that should
+    float overhead) based on the real-world date so the landscape gets
+    holiday flair. Every seasonal art piece stays 1-2 rows tall and
+    uses chars that don't collide with year-round features."""
     now = time.localtime()
     month, day = now.tm_mon, now.tm_mday
 
-    # JAN 1-7 — New Year's confetti scattered everywhere (gold/magenta/cyan).
-    if month == 1 and day <= 7:
-        GROUND_FEATURES.append({
-            "rate": 0.020, "color": "gold",
+    # NEW YEAR (Dec 31 - Jan 7) — confetti floats in the air, falling
+    # toward the ground. Three colors interleaved for sparkle.
+    if (month == 12 and day == 31) or (month == 1 and day <= 7):
+        SKY_FEATURES.append({
+            "rate": 0.040, "color": "gold",
             "char_colors": {".": "cyan", "'": "magenta"},
             "art": [".'."],
         })
 
-    # FEB 10-16 — Valentine's hearts speckle the ground (pink).
+    # VALENTINE'S (Feb 10-16) — pink hearts speckle the ground.
     if month == 2 and 10 <= day <= 16:
         GROUND_FEATURES.append({
             "rate": 0.020, "color": "pink",
             "art": ["<3"],
         })
 
-    # MAR 17 — St. Patrick's Day clovers (lime green).
+    # ST PATRICK'S (Mar 17) — lime-green clovers all over.
     if month == 3 and day == 17:
         GROUND_FEATURES.append({
             "rate": 0.030, "color": "lime_green",
             "art": ["%%"],
         })
 
-    # OCT — Halloween pumpkins (orange w/ dark_green stem).
-    if month == 10:
-        GROUND_FEATURES.append({
-            "rate": 0.025, "color": "orange",
-            "char_colors": {".": "dark_green"},
-            "art": ["(o)"],         # tiny carved pumpkin face
-        })
-
-    # JUL 4 — Independence Day fireworks (red, white-slashes, blue burst).
+    # INDEPENDENCE DAY (Jul 4) — red/white/blue fireworks in the sky.
     if month == 7 and day == 4:
-        GROUND_FEATURES.append({
-            "rate": 0.015, "color": "red",
+        SKY_FEATURES.append({
+            "rate": 0.030, "color": "red",
             "char_colors": {"+": "blue", "\\": "white", "/": "white"},
             "art": ["\\+/"],
         })
 
-    # DEC — Christmas tree spawn rate explodes 100x.
+    # HALLOWEEN (October) — orange pumpkins on the ground.
+    if month == 10:
+        GROUND_FEATURES.append({
+            "rate": 0.025, "color": "orange",
+            "char_colors": {".": "dark_green"},
+            "art": ["(o)"],
+        })
+
+    # CHRISTMAS (December) — christmas tree spawn rate jumps 100x.
     if month == 12 and _XMAS_TREE is not None:
         _XMAS_TREE["rate"] = min(0.01, _XMAS_TREE["rate"] * 100)
 
@@ -303,16 +310,15 @@ _apply_seasonal_events()
 
 
 def current_season():
-    """Returns a short name for any active seasonal event, or None.
-    Useful for /buddy rules + tests."""
+    """Returns a short name for any active seasonal event, or None."""
     now = time.localtime()
     m, d = now.tm_mon, now.tm_mday
-    if m == 1  and d <= 7:                return "new_year"
-    if m == 2  and 10 <= d <= 16:         return "valentines"
-    if m == 3  and d == 17:               return "st_patricks"
-    if m == 7  and d == 4:                return "independence_day"
-    if m == 10:                           return "halloween"
-    if m == 12:                           return "christmas"
+    if (m == 12 and d == 31) or (m == 1 and d <= 7): return "new_year"
+    if m == 2 and 10 <= d <= 16:                     return "valentines"
+    if m == 3 and d == 17:                           return "st_patricks"
+    if m == 7 and d == 4:                            return "independence_day"
+    if m == 10:                                      return "halloween"
+    if m == 12:                                      return "christmas"
     return None
 
 
@@ -572,6 +578,37 @@ def _stamp_hat(grid, sprite, sprite_top, sprite_w, buddy_screen, hat, width):
                 grid[r][cc] = (" ", None)
 
 
+def _place_sky_features(grid, cam, width):
+    """Sprinkle SKY_FEATURES (seasonal-only — fireworks, confetti, etc.)
+    across the top rows of the world. Each feature is dropped at a
+    deterministic-per-position row in [0, sky_max] so the sky has visual
+    depth instead of every burst on the same line."""
+    if not SKY_FEATURES:
+        return
+    sky_max = 2  # rows 0..2 — above any normal canopy
+    last_end = -100
+    for c in range(BUDDY_PANEL_WIDTH, width):
+        if c < last_end + 3:
+            continue
+        wp = cam + (c - BUDDY_TIP_COL)
+        feat = _pick_feature(wp, SKY_FEATURES, 137)
+        if not feat:
+            continue
+        feat_w = max(len(ln) for ln in feat["art"])
+        # Pick a deterministic row 0..sky_max for visual scatter.
+        row = (wp * 17 + 3) % (sky_max + 1)
+        h   = len(feat["art"])
+        row_colors  = feat.get("row_colors")
+        char_colors = feat.get("char_colors")
+        if row_colors:
+            for i, line in enumerate(feat["art"]):
+                rc = row_colors[i] if i < len(row_colors) else feat["color"]
+                _stamp(grid, [line], c, row + i, rc, width, char_colors)
+        else:
+            _stamp(grid, feat["art"], c, row, feat["color"], width, char_colors)
+        last_end = c + feat_w
+
+
 def _place_features(grid, cam, width, enemy_protect):
     """Run the two-pass feature placement: big trees first, then small
     features fill in around them. Big trees go first so they aren't
@@ -678,20 +715,24 @@ def render_world(sv, pet, width=140):
     # Landscape (trees, bushes, grass, flowers).
     _place_features(grid, cam, width, _enemy_protect_zone(st, cam))
 
+    # Seasonal sky features (fireworks, confetti) — placed AFTER ground
+    # features so they paint above the canopy. Most days this is a no-op.
+    _place_sky_features(grid, cam, width)
+
     # Pet sprite (overstamps anything it lands on inside the panel).
     _stamp(grid, sprite, buddy_screen, sprite_top, lvl_color, width)
 
-    # Vertical back-wall at col 0 — paint it only on rows that have other
-    # content. Rows above the tallest content (no big tree this frame, no
-    # tall hat) get NO wall, so the trim pass at the end removes them and
-    # the wall doesn't float in empty sky. The wall still does its job of
-    # anchoring leading whitespace on every row that actually renders.
-    for r in range(WORLD_ROWS):
-        if grid[r][BUDDY_WALL_COL][0] != " ":
-            continue
-        # any non-space char anywhere else in this row counts as "content"
-        if any(cell[0] != " " for cell in grid[r][1:]):
-            grid[r][BUDDY_WALL_COL] = ("|", "dark_green")
+    # Vertical back-wall at col 0 — paint it on every row that has content
+    # AND every row BETWEEN content rows, so an empty middle row (e.g.
+    # confetti at row 0 + canopy starting at row 2) doesn't show a gap in
+    # the wall. Rows above the topmost content row get NO wall, so the
+    # trim pass removes them and the wall never floats in empty sky.
+    content_rows = [r for r in range(WORLD_ROWS)
+                    if any(cell[0] != " " for cell in grid[r][1:])]
+    if content_rows:
+        for r in range(min(content_rows), max(content_rows) + 1):
+            if grid[r][BUDDY_WALL_COL][0] == " ":
+                grid[r][BUDDY_WALL_COL] = ("|", "dark_green")
 
     # Hat (multi-row, sits ON the head row).
     hat = core.get_equipped(sv, pet, "hat")

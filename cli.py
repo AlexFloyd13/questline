@@ -433,12 +433,12 @@ def cmd_rules(sv, args):
          "Each tree's gift is deterministic — it'll always give the same hat."),
         ("SEASONAL EVENTS",
          "The world picks up real-world holiday flair automatically:",
-         "  Jan 1-7   - new year confetti",
-         "  Feb 10-16 - valentine's hearts",
-         "  Mar 17    - st. patrick's clovers",
-         "  Jul 4     - independence day fireworks",
-         "  October   - halloween pumpkins",
-         "  December  - christmas tree spawn rate jumps 100x"),
+         "  Dec 31 - Jan 7  - new year confetti (IN THE SKY)",
+         "  Feb 10-16       - valentine's hearts on the ground",
+         "  Mar 17          - st. patrick's clovers",
+         "  Jul 4           - independence day fireworks (IN THE SKY)",
+         "  October         - halloween pumpkins",
+         "  December        - christmas tree spawn rate jumps 100x"),
     ]
     print()
     print("  " + core.c("BUDDY RULES", "white"))
