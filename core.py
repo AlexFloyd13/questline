@@ -245,17 +245,18 @@ def make_drop(sv, rng, level=1):
     Mythic. The boost effectively subtracts from the roll, pushing it
     toward the lower (rarer) thresholds in ITEM_RARITY_TABLE.
 
-    Calibrated so:
-      L1   - vanilla distribution (50% Common, 25% Uncommon, ..., 0.5% Mythic)
-      L25  - ~5% Mythic chance
-      L50  - ~10% Mythic chance
-      L100 - ~20% Mythic chance (still a chase, never a guarantee)
+    Calibrated against the new ITEM_RARITY_TABLE (Mythic base 5%):
+      L1   - 5% Mythic, 8% Legendary, 30% Common (vanilla)
+      L25  - ~10% Mythic, 22% Common
+      L50  - ~15% Mythic, 17% Common
+      L100 - ~25% Mythic, 8% Common (rare end fattens, Common thins)
 
     Hat type is rolled separately from ALL_DROPS so any hat can drop at
     any rarity. Mutates sv['next_iid']."""
-    # 0.002 boost per level above 1, capped at 0.30. Small enough that
-    # pulling a Mythic stays exciting even on a max-level pet.
-    boost = min(0.30, max(0, (level - 1) * 0.002))
+    # 0.002 boost per level above 1, capped at 0.22 — keeps Common visible
+    # all the way up to max level (without the cap, L>=110 would never
+    # see Common at all).
+    boost = min(0.22, max(0, (level - 1) * 0.002))
     roll = rng.random() - boost
     rarity = "Common"
     for name, thr in ITEM_RARITY_TABLE:
