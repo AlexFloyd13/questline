@@ -330,6 +330,36 @@ def cmd_data(sv, args):
     print(json.dumps(_pet_data(sv, _active_for_cli(sv)), indent=2))
 
 
+def cmd_help(sv, args):
+    """Print the list of every /buddy subcommand with a short description.
+    Points users at /buddy rules for the gameplay rules."""
+    print()
+    print("  " + core.c("BUDDY COMMANDS", "white"))
+    print("  " + core.c("-" * 42, "white"))
+    print()
+    rows = [
+        ("show",                "full sprite + stats for the active pet (default)"),
+        ("list",                "list every pet you own (>=active here, *=global default)"),
+        ("switch <n>",          "pin pet #n to THIS terminal (add --global to set default)"),
+        ("new",                 "hatch a brand-new random pet (auto-pinned here)"),
+        ("rename <name>",       "rename the active pet ('rename <n> <name>' for pet #n)"),
+        ("color [<name>]",      "list/set the active pet's color (unlocked tiers only)"),
+        ("bag",                 "list your hat inventory"),
+        ("equip <n>",           "toggle hat #n on the active pet"),
+        ("rules",               "print the full gameplay rules (XP, drops, combat, ...)"),
+        ("data",                "raw JSON dump of the active pet"),
+        ("species",             "show every species sprite side-by-side"),
+        ("preview",             "render every species in the live status-line world"),
+        ("hats",                "render every species wearing every hat (verify fit)"),
+        ("help",                "print this command list"),
+    ]
+    for name, desc in rows:
+        print("  " + core.c("/buddy " + name, "cyan") + " " * max(1, 20 - len(name)) + desc)
+    print()
+    print("  " + core.c("for gameplay rules: /buddy rules", "white"))
+    print()
+
+
 def cmd_rules(sv, args):
     """Print the gameplay rules — how XP, leveling, drops, combat, and
     per-terminal pet pinning work. Useful as a refresher or for showing
@@ -669,6 +699,10 @@ DISPATCH = {
     "bag":     cmd_bag,
     "equip":   cmd_equip,
     "rules":   cmd_rules,
+    "help":    cmd_help,
+    "?":       cmd_help,
+    "--help":  cmd_help,
+    "-h":      cmd_help,
     "data":    cmd_data,
     "species": cmd_species,
     "preview": cmd_preview,
