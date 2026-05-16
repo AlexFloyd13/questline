@@ -1,25 +1,45 @@
-"""Core buddy logic: save model, generation, leveling, drops, rendering."""
+"""Core buddy logic: save model, pet generation, leveling, drops, rendering.
+
+This module is the shared library that both `statusline.py` (the per-render
+status-line entry point) and `cli.py` (the /buddy subcommand dispatcher)
+import from. It owns the save file format, the RNG primitives, the
+leveling math, and the helpers that turn raw save state into colored
+ASCII output.
+"""
+
 import json, os, random
 from pathlib import Path
 from datetime import date
 
 from data import (
-    STATS, STAT_LABELS, SALT, SPECIES, SPECIES_TIERS, PET_RARITY_TABLE,
-    RARITY_STARS, COLORS, RESET, BOLD, DIM, RARITY_COLOR, LEVEL_COLOR_BANDS,
+    STATS, SALT, SPECIES, SPECIES_TIERS, PET_RARITY_TABLE,
+    COLORS, RESET, RARITY_COLOR, LEVEL_COLOR_BANDS,
     xp_to_next, DROP_CHANCE_ON_LEVELUP, ITEM_RARITY_TABLE, HATS,
     ALL_DROPS, EYE_STYLES, NAMES,
 )
 
+# Where the save file lives. Always inside the user's Claude config home
+# so it survives reinstalls and is gitignored when this repo is cloned.
 SAVE_PATH = Path.home() / ".claude" / "buddy" / "save.json"
+
+# Claude Code stores the user's local config (incl. their userID, which we
+# use as the seed for the starter pet) here. Read once at first-pet time.
 CLAUDE_JSON = Path.home() / ".claude.json"
 
 
 def today():
+    """ISO date string, used as 'hatched_at' on new pets."""
     return str(date.today())
 
 
-# --- hashing / PRNG (FNV-1a + Mulberry32, matches original buddy) ---
+# --- Hashing / PRNG --------------------------------------------------------
+# We need a deterministic, portable hash + RNG so that the SAME user gets
+# the SAME starter pet across reinstalls. Python's hash() is randomized
+# per-process and random.Random's algorithm isn't guaranteed across
+# versions — so we ship our own FNV-1a + Mulberry32.
+
 def fnv1a_32(s):
+    """32-bit FNV-1a hash of a string. Deterministic, portable, fast."""
     h = 0x811c9dc5
     for b in s.encode("utf-8"):
         h ^= b
@@ -28,6 +48,9 @@ def fnv1a_32(s):
 
 
 def mulberry32(seed):
+    """Tiny seedable PRNG. Returns a callable that yields floats in [0, 1).
+    Picked because it's stable across language ports — the same seed gives
+    the same sequence everywhere."""
     state = [seed & 0xFFFFFFFF]
 
     def rand():
@@ -35,34 +58,50 @@ def mulberry32(seed):
         t = state[0]
         t = (t ^ (t >> 15)) & 0xFFFFFFFF
         t = (t * (state[0] | 1)) & 0xFFFFFFFF
-        t = (t ^ (t + (((t ^ (t >> 7)) & 0xFFFFFFFF) * ((state[0] | 61) & 0xFFFFFFFF)) & 0xFFFFFFFF)) & 0xFFFFFFFF
+        t = (t ^ (t + (((t ^ (t >> 7)) & 0xFFFFFFFF)
+                        * ((state[0] | 61) & 0xFFFFFFFF)) & 0xFFFFFFFF)
+             ) & 0xFFFFFFFF
         return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296.0
 
     return rand
 
 
 def random_rng():
+    """Non-deterministic Mulberry32 seeded from os.urandom — used for
+    'hatch me a fresh random pet' where we don't want reproducibility."""
     return mulberry32(int.from_bytes(os.urandom(4), "big"))
 
 
 def get_user_id():
+    """Read the Claude Code userID from ~/.claude.json. Falls back to
+    'anon' if the file is missing or malformed — the starter pet is then
+    deterministic-per-machine instead of deterministic-per-user."""
     try:
         return json.loads(CLAUDE_JSON.read_text()).get("userID", "anon")
     except Exception:
         return "anon"
 
 
-# --- save load/save ---
+# --- Save load / save ------------------------------------------------------
+
 def _fresh():
+    """A brand-new empty save dict. Used when no save file exists OR when
+    the existing file is corrupt beyond repair."""
     return {
-        "version": 2, "active": None, "next_id": 1, "next_iid": 1,
-        "pets": {}, "inventory": [],
-        "watermarks": {},  # session_id -> {mtime, size, tokens}
+        "version": 2,
+        "active": None,           # id of the pet currently earning XP
+        "next_id": 1,             # incremented for each new pet
+        "next_iid": 1,            # incremented for each new inventory entry
+        "pets": {},               # id -> pet dict
+        "inventory": [],          # list of {iid, slot, type, rarity}
+        "watermarks": {},         # session_id -> {mtime, size, tokens}
         "created_at": today(),
     }
 
 
 def load():
+    """Read and validate save.json. Returns a fresh save if the file is
+    missing, malformed, or has wrong-type top-level fields. Never raises."""
     if SAVE_PATH.exists():
         try:
             d = json.loads(SAVE_PATH.read_text())
@@ -85,52 +124,67 @@ def load():
 
 
 def save(d):
+    """Atomically write the save dict to disk. The tmp+rename dance prevents
+    a partial save from corrupting the file if we crash mid-write."""
     SAVE_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = SAVE_PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(d, indent=2))
     tmp.replace(SAVE_PATH)
 
 
-# --- generation ---
+# --- Pet generation --------------------------------------------------------
+
 def _roll_attrs(rng):
+    """Roll rarity, species, shiny flag, eye style, base stats, and name
+    for a brand-new pet. `rng()` returns floats in [0, 1)."""
+    # Roll rarity tier
     roll = rng()
     rarity = "Common"
     for name, thr in PET_RARITY_TABLE:
         if roll < thr:
             rarity = name
             break
-    # if the rolled tier is empty, downgrade until we find a non-empty pool
+    # If the rolled tier is empty (no species defined for it), downgrade
+    # until we find a non-empty pool. Keeps the system resilient if you
+    # delete the only species in a tier.
     _order = ["Legendary", "Epic", "Rare", "Uncommon", "Common"]
     while not SPECIES_TIERS[rarity]:
         idx = _order.index(rarity)
         if idx + 1 >= len(_order):
             break
         rarity = _order[idx + 1]
+
     pool = SPECIES_TIERS[rarity]
     species = pool[int(rng() * len(pool))]
-    shiny = rng() < 0.01
+    shiny = rng() < 0.01                          # 1% chance of shiny
     eyes = EYE_STYLES[int(rng() * len(EYE_STYLES))]
-    base = {s: 15 + int(rng() * 66) for s in STATS}  # 15-80
+    base = {s: 15 + int(rng() * 66) for s in STATS}   # base stats 15..80
     name = NAMES[species][int(rng() * len(NAMES[species]))]
     return rarity, species, shiny, eyes, base, name
 
 
 def gen_pet(sv, rng):
+    """Build a brand-new pet dict (Lvl 1, 0 XP) and increment next_id.
+    Caller is responsible for adding it to sv['pets']."""
     rarity, species, shiny, eyes, base, name = _roll_attrs(rng)
     pid = "p%d" % sv["next_id"]
     sv["next_id"] += 1
     return {
         "id": pid, "name": name, "species": species, "rarity": rarity,
         "shiny": shiny, "eyes": eyes,
-        "base_stats": base, "earned_stats": {s: 0 for s in STATS},
+        "base_stats": base,
+        "earned_stats": {s: 0 for s in STATS},
         "level": 1, "xp": 0, "total_tokens": 0,
         "equipped_hat": None,
-        "wins": 0, "losses": 0, "hatched_at": today(),
+        "wins": 0, "losses": 0,
+        "hatched_at": today(),
     }
 
 
 def ensure_first_pet(sv):
-    """Create the very first pet (seeded from userID) if collection is empty."""
+    """If the user has no pets yet, hatch the deterministic starter pet
+    (seeded from their Claude userID + SALT). Otherwise, just make sure
+    sv['active'] points at a real pet. Returns True if it hatched."""
     if sv["pets"]:
         if sv.get("active") not in sv["pets"]:
             sv["active"] = next(iter(sv["pets"]))
@@ -143,21 +197,26 @@ def ensure_first_pet(sv):
 
 
 def add_random_pet(sv):
+    """Hatch a new pet with non-deterministic attributes."""
     pet = gen_pet(sv, random_rng())
     sv["pets"][pet["id"]] = pet
     return pet
 
 
 def active_pet(sv):
+    """The pet currently earning XP, or None if sv['active'] is stale."""
     return sv["pets"].get(sv.get("active"))
 
 
-# --- stats / leveling ---
+# --- Stats / leveling ------------------------------------------------------
+
 def total_stats(pet):
+    """Effective stats = base (rolled at hatch) + earned (from level-ups)."""
     return {s: pet["base_stats"][s] + pet["earned_stats"][s] for s in STATS}
 
 
 def color_for_level(level):
+    """The color a pet's sprite should render in, based on its level band."""
     for thr, col in LEVEL_COLOR_BANDS:
         if level <= thr:
             return col
@@ -165,6 +224,9 @@ def color_for_level(level):
 
 
 def grow_stats(pet, rng):
+    """On level-up, hand out 5 stat points: 3 to a random themed stat
+    (favored for the species) and 2 to any random stat. Mutates the pet
+    in place. Returns the gains dict for the level-up event."""
     theme = SPECIES[pet["species"]]["theme"]
     gains = {s: 0 for s in STATS}
     for _ in range(3):
@@ -177,6 +239,8 @@ def grow_stats(pet, rng):
 
 
 def make_drop(sv, rng):
+    """Generate one random hat drop. Rolls rarity independently of type,
+    so any hat can drop at any rarity. Mutates sv['next_iid']."""
     roll = rng.random()
     rarity = "Common"
     for name, thr in ITEM_RARITY_TABLE:
@@ -190,7 +254,9 @@ def make_drop(sv, rng):
 
 
 def apply_xp(sv, pet, amount):
-    """Add XP, process level-ups (themed growth + drop rolls). Returns events."""
+    """Add XP to a pet. Cascades through any level-ups (themed stat gains
+    + drop rolls) until the pet's xp falls below xp_to_next. Returns a
+    list of events the caller can use for UI feedback / logging."""
     events = []
     if amount <= 0:
         return events
@@ -199,6 +265,8 @@ def apply_xp(sv, pet, amount):
     while pet["xp"] >= xp_to_next(pet["level"]):
         pet["xp"] -= xp_to_next(pet["level"])
         pet["level"] += 1
+        # Per-level RNG seeded from pet id + level — deterministic so a
+        # given pet always gains the same stats at the same level.
         rng = random.Random("%s-L%d" % (pet["id"], pet["level"]))
         gains = grow_stats(pet, rng)
         events.append({
@@ -212,47 +280,54 @@ def apply_xp(sv, pet, amount):
     return events
 
 
-# --- inventory ---
+# --- Inventory -------------------------------------------------------------
+
 def get_equipped(sv, pet, slot):
-    # Only "hat" is a real equipment slot now; items were removed.
+    """The inventory entry currently equipped in `slot` on this pet, or
+    None. Only "hat" is a real slot — held items existed in an earlier
+    draft and were removed."""
     if slot != "hat":
         return None
     iid = pet.get("equipped_hat")
     if not iid:
         return None
-    for it in sv["inventory"]:
-        if it["iid"] == iid:
-            return it
-    return None
+    return next((it for it in sv["inventory"] if it["iid"] == iid), None)
 
 
 def inv_list(sv):
-    """Inventory is hats-only now (newest first by insertion order)."""
+    """Inventory entries (hats only). Insertion order = oldest first."""
     return [it for it in sv["inventory"] if it["slot"] == "hat"]
 
 
-# --- rendering ---
-# ANSI color is rendered on the status-line surface but not in chat output,
-# so cli.py disables it when piped; statusline.py keeps it on.
+# --- Rendering helpers -----------------------------------------------------
+# ANSI color is appropriate for the status-line surface but not for plain
+# chat output. cli.py flips USE_COLOR off when stdout isn't a TTY;
+# statusline.py keeps it on.
+
 USE_COLOR = True
 
 
 def c(text, color):
+    """Wrap `text` in the ANSI escapes for `color`. No-op if USE_COLOR is
+    off or if `color` isn't in the palette."""
     if not USE_COLOR:
         return str(text)
     return "%s%s%s" % (COLORS.get(color, ""), text, RESET)
 
 
 def crarity(text, rarity):
+    """Wrap `text` in the color associated with this rarity tier."""
     return c(text, RARITY_COLOR.get(rarity, "white"))
 
 
 def stat_bar(val, width=10):
+    """A `[####------]` bar where `val` (0-100) controls fill fraction."""
     filled = max(0, min(width, val // 10))
     return "[" + "#" * filled + "-" * (width - filled) + "]"
 
 
 def xp_bar(pet, width=12):
+    """A `[####------]` bar showing this pet's progress to the next level."""
     need = xp_to_next(pet["level"])
     frac = 0 if need <= 0 else min(1.0, pet["xp"] / need)
     filled = int(frac * width)
@@ -260,6 +335,7 @@ def xp_bar(pet, width=12):
 
 
 def fmt_tokens(n):
+    """Compact token count: 1234 -> '1.2k', 1500000 -> '1.5M'."""
     n = int(n)
     if n >= 1_000_000:
         return "%.1fM" % (n / 1_000_000)
@@ -270,15 +346,16 @@ def fmt_tokens(n):
 
 def item_label(it):
     """Colored 'name (Rarity)' for an inventory entry."""
-    return "%s %s" % (crarity(it["type"], it["rarity"]),
-                      c("(%s)" % it["rarity"], RARITY_COLOR[it["rarity"]]))
+    return "%s %s" % (
+        crarity(it["type"], it["rarity"]),
+        c("(%s)" % it["rarity"], RARITY_COLOR[it["rarity"]]),
+    )
 
 
 def render_sprite(sv, pet):
-    """Multi-line ASCII sprite: hat rows stacked above the head row, art in
-    level color. Hats are multi-row (list of strings); the bottom row of the
-    hat sits ON the buddy's head row in the world view, but for this CLI
-    block-render we keep the hat strictly above the head for legibility."""
+    """Multi-line ASCII sprite for the CLI (NOT the status line — that's
+    in adventure.render_world). Hat rows are stacked above the sprite for
+    legibility; in the world view they overlap the head row instead."""
     sp = SPECIES[pet["species"]]
     lvl_color = color_for_level(pet["level"])
     art = [ln.replace("{e}", pet["eyes"]) for ln in sp["art"]]
@@ -296,11 +373,13 @@ def render_sprite(sv, pet):
 
 
 def mini_face(pet):
+    """One-line compact face, e.g. for the /buddy list summary."""
     sp = SPECIES[pet["species"]]
     return c(sp["mini"].replace("{e}", pet["eyes"]), color_for_level(pet["level"]))
 
 
 def name_tag(pet):
+    """Pet name in the level color, wrapped in `*...*` if shiny."""
     nm = pet["name"]
     if pet.get("shiny"):
         nm = "*" + nm + "*"
