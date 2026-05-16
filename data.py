@@ -136,8 +136,8 @@ XP_TOKEN_FIELDS = ["input_tokens", "output_tokens", "cache_creation_input_tokens
 # Drop chance is rolled at level-up and after winning a fight. The rarity
 # of what drops is rolled independently against ITEM_RARITY_TABLE.
 
-DROP_CHANCE_ON_LEVELUP = 0.20
-DROP_CHANCE_ON_WIN     = 0.35
+DROP_CHANCE_ON_LEVELUP = 0.20    # rolled on every level-up
+DROP_CHANCE_ON_WIN     = 0.06    # rolled on every fight win
 
 ITEM_RARITY_TABLE = [
     ("Mythic",    0.005),

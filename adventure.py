@@ -20,7 +20,7 @@ This module owns the world generation, combat sequencing, and rendering.
 import random, re, time
 
 import core
-from data import SPECIES, COLORS, RESET
+from data import SPECIES, COLORS, RESET, DROP_CHANCE_ON_WIN
 
 
 # --- Layout constants ------------------------------------------------------
@@ -343,7 +343,7 @@ def _combat_turn(sv, pet, st):
             core.apply_xp(sv, pet, xp)
             st["kills"] = st.get("kills", 0) + 1
             drop = None
-            if rng.random() < 0.06:
+            if rng.random() < DROP_CHANCE_ON_WIN:
                 drop = core.make_drop(sv, rng)
                 sv["inventory"].append(drop)
             enc["outcome"] = "win"
@@ -604,11 +604,16 @@ def render_world(sv, pet, width=140):
     # Pet sprite (overstamps anything it lands on inside the panel).
     _stamp(grid, sprite, buddy_screen, sprite_top, lvl_color, width)
 
-    # Vertical back-wall at col 0 — runs the full height of the panel so
-    # the leftmost col is never empty (otherwise a terminal's leading-
-    # whitespace handling could shift rows relative to each other).
+    # Vertical back-wall at col 0 — paint it only on rows that have other
+    # content. Rows above the tallest content (no big tree this frame, no
+    # tall hat) get NO wall, so the trim pass at the end removes them and
+    # the wall doesn't float in empty sky. The wall still does its job of
+    # anchoring leading whitespace on every row that actually renders.
     for r in range(WORLD_ROWS):
-        if grid[r][BUDDY_WALL_COL][0] == " ":
+        if grid[r][BUDDY_WALL_COL][0] != " ":
+            continue
+        # any non-space char anywhere else in this row counts as "content"
+        if any(cell[0] != " " for cell in grid[r][1:]):
             grid[r][BUDDY_WALL_COL] = ("|", "dark_green")
 
     # Hat (multi-row, sits ON the head row).
