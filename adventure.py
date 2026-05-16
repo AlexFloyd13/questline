@@ -587,7 +587,7 @@ def render_world(sv, pet, width=140):
     sprite = [ln.replace("{e}", pet["eyes"]) for ln in sp["art"]]
     sprite_h = len(sprite)
     sprite_w = max((len(ln) for ln in sprite), default=0)
-    lvl_color = core.color_for_level(pet["level"])
+    lvl_color = core.color_for_pet(pet)
     sprite_top = max(0, WORLD_ROWS - sprite_h)
     buddy_screen = BUDDY_OFFSET
 

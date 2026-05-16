@@ -8,6 +8,7 @@ Run as `python3 cli.py <subcommand> [args...]`. Subcommands:
   switch <n>        make pet #n the one earning XP from now on
   new               hatch a brand-new random pet (becomes active)
   rename <name>     rename the active pet (or `rename <n> <name>`)
+  color [<name>]    list/set the active pet's color (only unlocked colors)
   bag               list your hat inventory
   equip <n>         toggle hat #n on the active pet
   data              raw JSON dump of the active pet
@@ -45,7 +46,7 @@ def _pet_data(sv, pet):
         "rarity":       pet["rarity"],
         "shiny":        pet["shiny"],
         "level":        pet["level"],
-        "color":        core.color_for_level(pet["level"]),
+        "color":        core.color_for_pet(pet),
         "stats":        ts,
         "top_stat":     max(ts, key=ts.get),
         "low_stat":     min(ts, key=ts.get),
@@ -96,7 +97,7 @@ def _starter_template(eye="o"):
 def cmd_show(sv, args):
     """Full sprite + stats + XP bar + equipped gear for the active pet."""
     pet = core.active_pet(sv)
-    lc  = core.color_for_level(pet["level"])
+    lc  = core.color_for_pet(pet)
     shiny = "  *SHINY*" if pet["shiny"] else ""
     print()
     print("  " + core.c("%s %s  \"%s\"%s" % (
@@ -135,7 +136,7 @@ def cmd_list(sv, args):
     print()
     for i, p in enumerate(pets, 1):
         is_active = (p["id"] == sv["active"])
-        lc = core.color_for_level(p["level"])
+        lc = core.color_for_pet(p)
         marker = core.c(">", lc) if is_active else " "
         print("  [%d] %s %-12s %-9s %-7s %-10s %s" % (
             i, marker, core.name_tag(p), p["species"],
@@ -177,7 +178,7 @@ def cmd_new(sv, args):
     p = core.add_random_pet(sv)
     sv["active"] = p["id"]
     core.save(sv)
-    lc = core.color_for_level(p["level"])
+    lc = core.color_for_pet(p)
     shiny = "  *SHINY*" if p["shiny"] else ""
     print()
     print("  " + core.c("* a new buddy hatched! *", "white"))
@@ -271,6 +272,63 @@ def cmd_equip(sv, args):
 def cmd_data(sv, args):
     """Pretty-print the JSON snapshot of the active pet."""
     print(json.dumps(_pet_data(sv, core.active_pet(sv)), indent=2))
+
+
+def cmd_color(sv, args):
+    """Change the active pet's color.
+
+    Forms:
+      /buddy color              - show unlocked colors + current pick
+      /buddy color <name>       - set the color (must be unlocked)
+      /buddy color auto         - clear the override (use natural level color)
+
+    Colors are unlocked by reaching the level band that grants them. You
+    can pick any color you've already unlocked, including dropping back
+    down to a lower-tier color. Color choice is purely cosmetic — it
+    doesn't affect stats, drops, or anything else."""
+    pet = core.active_pet(sv)
+    unlocked = core.unlocked_colors(pet["level"])
+    natural  = core.color_for_level(pet["level"])
+    current  = pet.get("color_choice") or natural
+
+    if not args:
+        # Show palette + current pick
+        print()
+        print("  " + core.c("COLOR for %s (Lv %d)" % (pet["name"], pet["level"]),
+                            core.color_for_pet(pet)))
+        print()
+        for col in unlocked:
+            marker = ">" if col == current else " "
+            tag = " (natural)" if col == natural else ""
+            print("  %s %s%s" % (marker, core.c(col, col), tag))
+        print()
+        print("  " + core.c("/buddy color <name>   /buddy color auto", "white"))
+        print()
+        return
+
+    target = args[0].lower()
+    if target in ("auto", "clear", "reset", "default", "none"):
+        pet["color_choice"] = None
+        core.save(sv)
+        print()
+        print("  %s back to its natural color (%s)." % (
+            core.name_tag(pet), core.c(natural, natural)))
+        print()
+        return
+
+    if target not in unlocked:
+        print()
+        print("  %s hasn't unlocked %s yet." % (pet["name"], target))
+        print("  unlocked: " + ", ".join(core.c(c, c) for c in unlocked))
+        print()
+        return
+
+    pet["color_choice"] = target
+    core.save(sv)
+    print()
+    print("  %s now renders in %s." % (
+        core.name_tag(pet), core.c(target, target)))
+    print()
 
 
 # Allow letters, digits, space, '-', '_', and a few punctuation chars that
@@ -490,6 +548,7 @@ DISPATCH = {
     "switch":  cmd_switch,
     "new":     cmd_new,
     "rename":  cmd_rename,
+    "color":   cmd_color,
     "bag":     cmd_bag,
     "equip":   cmd_equip,
     "data":    cmd_data,

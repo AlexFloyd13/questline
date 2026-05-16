@@ -50,6 +50,7 @@ Invoke via `/buddy` in Claude Code or by running `python3 ~/.claude/buddy/cli.py
 | `/buddy switch <n>` | Make pet #n the active one (earns XP from now on) |
 | `/buddy new` | Hatch a brand-new random pet |
 | `/buddy rename <name>` | Rename the active pet (or `rename <n> <name>` for pet #n) |
+| `/buddy color [<name>]` | List/set the active pet's color (cosmetic only; unlocked tier by level) |
 | `/buddy bag` | Show your hat inventory |
 | `/buddy equip <n>` | Toggle hat #n on the active pet |
 | `/buddy species` | Show every species sprite |

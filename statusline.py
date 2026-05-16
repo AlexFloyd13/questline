@@ -139,7 +139,7 @@ def render_line(sv, pet, width):
     import core, adventure
     from data import SPECIES
 
-    lc = core.color_for_level(pet["level"])
+    lc = core.color_for_pet(pet)
     st = adventure._state(sv)
 
     # Honor the .debug_buddy override (single-threaded, safe to mutate

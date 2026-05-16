@@ -176,6 +176,7 @@ def gen_pet(sv, rng):
         "earned_stats": {s: 0 for s in STATS},
         "level": 1, "xp": 0, "total_tokens": 0,
         "equipped_hat": None,
+        "color_choice": None,    # /buddy color override (None = auto by level)
         "wins": 0, "losses": 0,
         "hatched_at": today(),
     }
@@ -216,11 +217,41 @@ def total_stats(pet):
 
 
 def color_for_level(level):
-    """The color a pet's sprite should render in, based on its level band."""
+    """The natural color for a pet's level band — what it renders in by
+    default (no manual override)."""
     for thr, col in LEVEL_COLOR_BANDS:
         if level <= thr:
             return col
     return "gold"
+
+
+def unlocked_colors(level):
+    """Every color tier the pet has reached. Lowest-tier first.
+
+    Lvl 1   -> ['white']
+    Lvl 10  -> ['white', 'green']
+    Lvl 40  -> ['white', 'green', 'cyan', 'blue']
+    Lvl 100 -> ['white', 'green', 'cyan', 'blue', 'magenta', 'gold']
+
+    A pet may downgrade to any color it has unlocked via the
+    /buddy color subcommand, but the choice is cosmetic only."""
+    unlocked = []
+    for thr, col in LEVEL_COLOR_BANDS:
+        unlocked.append(col)
+        if level <= thr:
+            break
+    return unlocked
+
+
+def color_for_pet(pet):
+    """The color this pet should render in right now. Honors pet['color_choice']
+    if it's set and the pet has actually unlocked that color; otherwise
+    falls back to the natural level-band color."""
+    natural = color_for_level(pet["level"])
+    choice  = pet.get("color_choice")
+    if choice and choice in unlocked_colors(pet["level"]):
+        return choice
+    return natural
 
 
 def grow_stats(pet, rng):
@@ -374,7 +405,7 @@ def render_sprite(sv, pet):
     in adventure.render_world). Hat rows are stacked above the sprite for
     legibility; in the world view they overlap the head row instead."""
     sp = SPECIES[pet["species"]]
-    lvl_color = color_for_level(pet["level"])
+    lvl_color = color_for_pet(pet)
     art = [ln.replace("{e}", pet["eyes"]) for ln in sp["art"]]
     hat = get_equipped(sv, pet, "hat")
     lines = []
@@ -392,12 +423,12 @@ def render_sprite(sv, pet):
 def mini_face(pet):
     """One-line compact face, e.g. for the /buddy list summary."""
     sp = SPECIES[pet["species"]]
-    return c(sp["mini"].replace("{e}", pet["eyes"]), color_for_level(pet["level"]))
+    return c(sp["mini"].replace("{e}", pet["eyes"]), color_for_pet(pet))
 
 
 def name_tag(pet):
-    """Pet name in the level color, wrapped in `*...*` if shiny."""
+    """Pet name in the pet's color, wrapped in `*...*` if shiny."""
     nm = pet["name"]
     if pet.get("shiny"):
         nm = "*" + nm + "*"
-    return c(nm, color_for_level(pet["level"]))
+    return c(nm, color_for_pet(pet))
