@@ -81,7 +81,8 @@ COLORS = {
     "cyan":          "\033[96m",
     "blue":          "\033[94m",
     "magenta":       "\033[95m",
-    "gold":          "\033[38;5;220m",
+    "silver":        "\033[38;5;250m",   # L76-99 — precursor to gold
+    "gold":          "\033[38;5;220m",   # L100+ — only the true max-level pets
     "brown":         "\033[38;5;130m",   # tree trunks
     "dark_green":    "\033[38;5;22m",    # ground line
     "pine_green":    "\033[38;5;28m",    # darkest tree foliage
@@ -96,12 +97,15 @@ RESET = "\033[0m"
 
 # As your pet levels up, its sprite color climbs this ladder. The first
 # entry whose threshold is >= the pet's level wins.
+# Gold (L100+) is the prestige tier — reaching it is the goal of the
+# whole grind. Silver (L76-99) is the "almost there" precursor.
 LEVEL_COLOR_BANDS = [
     (5,     "white"),
     (15,    "green"),
     (30,    "cyan"),
     (50,    "blue"),
     (75,    "magenta"),
+    (99,    "silver"),
     (10**9, "gold"),
 ]
 

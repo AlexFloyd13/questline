@@ -231,7 +231,8 @@ def unlocked_colors(level):
     Lvl 1   -> ['white']
     Lvl 10  -> ['white', 'green']
     Lvl 40  -> ['white', 'green', 'cyan', 'blue']
-    Lvl 100 -> ['white', 'green', 'cyan', 'blue', 'magenta', 'gold']
+    Lvl 80  -> ['white', 'green', 'cyan', 'blue', 'magenta', 'silver']
+    Lvl 100 -> all seven (silver and gold)
 
     A pet may downgrade to any color it has unlocked via the
     /buddy color subcommand, but the choice is cosmetic only."""
