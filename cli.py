@@ -11,6 +11,7 @@ Run as `python3 cli.py <subcommand> [args...]`. Subcommands:
   color [<name>]    list/set the active pet's color (only unlocked colors)
   bag               list your hat inventory
   equip <n>         toggle hat #n on the active pet
+  rules             print the full gameplay rules
   data              raw JSON dump of the active pet
   species           every species sprite side-by-side
   preview           every species in the live world view
@@ -78,6 +79,15 @@ def _hat_rows(hat_type):
     return [rows] if isinstance(rows, str) else rows
 
 
+def _active_for_cli(sv):
+    """The pet a /buddy subcommand should operate on: the per-terminal
+    pinned pet for this session, or the global default if unpinned."""
+    sess = sv.get("current_session")
+    if sess:
+        return core.active_pet_for_session(sv, sess)
+    return core.active_pet(sv)
+
+
 def _starter_template(eye="o"):
     """A fully-populated 'fake' pet dict useful for preview/hats commands
     that need a pet shape but don't want to disturb the user's real save."""
@@ -95,9 +105,12 @@ def _starter_template(eye="o"):
 # --- Subcommands -----------------------------------------------------------
 
 def cmd_show(sv, args):
-    """Full sprite + stats + XP bar + equipped gear for the active pet."""
-    pet = core.active_pet(sv)
-    lc  = core.color_for_pet(pet)
+    """Full sprite + stats + XP bar + equipped gear for the pet active
+    in the current terminal (or the global default if this terminal
+    hasn't been pinned)."""
+    sess = sv.get("current_session")
+    pet  = core.active_pet_for_session(sv, sess) if sess else core.active_pet(sv)
+    lc   = core.color_for_pet(pet)
     shiny = "  *SHINY*" if pet["shiny"] else ""
     print()
     print("  " + core.c("%s %s  \"%s\"%s" % (
@@ -129,44 +142,80 @@ def cmd_show(sv, args):
 
 
 def cmd_list(sv, args):
-    """One row per pet: marker, name, species, level, rarity, stars."""
+    """One row per pet. Markers show what's active where:
+       >  = pinned to THIS terminal (the one /buddy was run from)
+       *  = global default (used by any terminal that hasn't pinned)"""
     pets = list(sv["pets"].values())
+    sess = sv.get("current_session")
+    here_id   = sv.get("session_pets", {}).get(sess) if sess else None
+    global_id = sv.get("active")
     print()
     print("  " + core.c("YOUR PETS (%d)" % len(pets), "white"))
     print()
     for i, p in enumerate(pets, 1):
-        is_active = (p["id"] == sv["active"])
         lc = core.color_for_pet(p)
-        marker = core.c(">", lc) if is_active else " "
+        if p["id"] == here_id:
+            marker = core.c(">", lc)
+        elif p["id"] == global_id and here_id is None:
+            marker = core.c(">", lc)
+        elif p["id"] == global_id:
+            marker = core.c("*", "white")
+        else:
+            marker = " "
         print("  [%d] %s %-12s %-9s %-7s %-10s %s" % (
             i, marker, core.name_tag(p), p["species"],
             core.c("Lv%d" % p["level"], lc), p["rarity"],
             RARITY_STARS[p["rarity"]]))
     print()
+    print("  " + core.c("> = active in this terminal   * = global default", "white"))
     print("  " + core.c("/buddy switch <n>   -   /buddy new   -   /buddy bag", "white"))
     print()
 
 
 def cmd_switch(sv, args):
-    """Change which pet earns XP. From now on, all session tokens credit
-    to the new pet."""
+    """Change which pet earns XP.
+
+    Forms:
+      /buddy switch <n>              pin pet #n to THIS terminal only
+      /buddy switch <n> --global     pin pet #n as the default for every
+                                     terminal that hasn't been pinned
+
+    Per-terminal pinning lets you grind two pets simultaneously — terminal A
+    can be leveling Biscuit while terminal B is leveling Eight. Each render
+    of a terminal credits its own session tokens to whichever pet that
+    terminal has pinned (or the global default if it hasn't pinned one)."""
     pets = list(sv["pets"].values())
-    if not args or not args[0].isdigit():
-        print("  usage: /buddy switch <n>   (see /buddy list)")
+    is_global = "--global" in args
+    nargs = [a for a in args if a != "--global"]
+    if not nargs or not nargs[0].isdigit():
+        print("  usage: /buddy switch <n> [--global]   (see /buddy list)")
         return
-    n = int(args[0])
+    n = int(nargs[0])
     if n < 1 or n > len(pets):
         print("  no pet #%d - you have %d." % (n, len(pets)))
         return
     p = pets[n - 1]
-    old = core.active_pet(sv)
-    sv["active"] = p["id"]
+    sess = sv.get("current_session")
+
+    if is_global or not sess:
+        # Old behavior: update the global default for every unpinned terminal.
+        old = core.active_pet(sv)
+        sv["active"] = p["id"]
+        target_desc = "every unpinned terminal"
+    else:
+        # Pin just this terminal.
+        old_pid = sv.get("session_pets", {}).get(sess) or sv.get("active")
+        old = sv["pets"].get(old_pid)
+        core.pin_session_pet(sv, sess, p["id"])
+        target_desc = "this terminal"
+
     core.save(sv)
     print()
     if old and old["id"] != p["id"]:
-        print("  active: %s -> %s" % (core.name_tag(old), core.name_tag(p)))
+        print("  %s: %s -> %s" % (target_desc,
+                                  core.name_tag(old), core.name_tag(p)))
     else:
-        print("  active: %s" % core.name_tag(p))
+        print("  %s: %s" % (target_desc, core.name_tag(p)))
     print("  " + core.c("token XP now flows to %s." % p["name"], "white"))
     print()
     print(core.render_sprite(sv, p))
@@ -174,9 +223,16 @@ def cmd_switch(sv, args):
 
 
 def cmd_new(sv, args):
-    """Hatch a fresh random pet and make it active."""
+    """Hatch a fresh random pet. The new pet becomes the active pet in
+    THIS terminal (and the global default if no other pet has been pinned
+    globally yet, e.g. it's your first hatch)."""
     p = core.add_random_pet(sv)
-    sv["active"] = p["id"]
+    sess = sv.get("current_session")
+    if sess:
+        core.pin_session_pet(sv, sess, p["id"])
+    # Also set as global default if there isn't one yet (first hatch case).
+    if not sv.get("active") or sv["active"] not in sv["pets"]:
+        sv["active"] = p["id"]
     core.save(sv)
     lc = core.color_for_pet(p)
     shiny = "  *SHINY*" if p["shiny"] else ""
@@ -250,7 +306,7 @@ def cmd_equip(sv, args):
         print("  no hat #%d - you have %d." % (n, len(inv)))
         return
     it  = inv[n - 1]
-    pet = core.active_pet(sv)
+    pet = _active_for_cli(sv)
     print()
     if pet.get("equipped_hat") == it["iid"]:
         # Same hat is already on — toggle off.
@@ -271,7 +327,68 @@ def cmd_equip(sv, args):
 
 def cmd_data(sv, args):
     """Pretty-print the JSON snapshot of the active pet."""
-    print(json.dumps(_pet_data(sv, core.active_pet(sv)), indent=2))
+    print(json.dumps(_pet_data(sv, _active_for_cli(sv)), indent=2))
+
+
+def cmd_rules(sv, args):
+    """Print the gameplay rules — how XP, leveling, drops, combat, and
+    per-terminal pet pinning work. Useful as a refresher or for showing
+    new users what the buddy system actually does."""
+    rules = [
+        ("XP",
+         "Every Claude Code message credits its tokens (input + output +",
+         "cache-creation) as XP to whichever pet is active in that terminal.",
+         "Cache-read tokens don't count (too cheap and huge — would warp the curve)."),
+        ("LEVELING",
+         "Quadratic curve.",
+         "  L20 ~ 4.5M tokens   (~2 days at max Claude Max-20 usage)",
+         "  L50 ~ 37M tokens    (~17 days)",
+         "  L100 ~ 200M tokens  (~3 months — max level / prestige)",
+         "Levels keep climbing past 100 but the XP curve gets brutal."),
+        ("COLOR TIERS",
+         "Your pet's sprite color upgrades at level milestones:",
+         "  L1-5    white      L51-75   magenta",
+         "  L6-15   green      L76-99   silver",
+         "  L16-30  cyan       L100+    GOLD  (prestige)",
+         "  L31-50  blue",
+         "Use /buddy color to pick any color you've unlocked (cosmetic only)."),
+        ("HATS",
+         "Drop sources:",
+         "  - 20% chance on every level-up",
+         "  -  6% chance on every fight win",
+         "  - guaranteed Rare+ hat from every Christmas tree you walk past",
+         "Rarity scales with pet level — Mythic peaks at 5% at L100."),
+        ("RARITY TIERS",
+         "Common (white)   Uncommon (green)   Rare (cyan)",
+         "Epic (blue)      Legendary (magenta) Mythic (gold)",
+         "Rarity colors match the level colors — a L100 gold pet pulling",
+         "a Mythic gold hat is the chase."),
+        ("COMBAT",
+         "Wild monsters spawn every ~33 walked cols. They approach, fight,",
+         "and resolve in a few ticks. Win chance is biased by debugging +",
+         "chaos stats. Wins award XP (and maybe a drop); losses give 1/5 XP."),
+        ("MULTI-PET",
+         "Hatch new pets with /buddy new. Each pet has its own L1->L100",
+         "progression. /buddy switch <n> changes the active pet IN THIS",
+         "TERMINAL — different terminals can grind different pets in",
+         "parallel. Add --global to switch the default for every terminal."),
+        ("CHRISTMAS TREE",
+         "Ultra-rare (~1 in 20 000 world cols). Gold star, red ornaments,",
+         "red present box. Walk through it and get a guaranteed Rare+ hat.",
+         "Each tree's gift is deterministic — it'll always give the same hat."),
+    ]
+    print()
+    print("  " + core.c("BUDDY RULES", "white"))
+    print("  " + core.c("-" * 42, "white"))
+    for section in rules:
+        head, *lines = section
+        print()
+        print("  " + core.c(head, "cyan"))
+        for ln in lines:
+            print("    " + ln)
+    print()
+    print("  " + core.c("/buddy show   /buddy list   /buddy bag   /buddy hats", "white"))
+    print()
 
 
 def cmd_color(sv, args):
@@ -286,7 +403,7 @@ def cmd_color(sv, args):
     can pick any color you've already unlocked, including dropping back
     down to a lower-tier color. Color choice is purely cosmetic — it
     doesn't affect stats, drops, or anything else."""
-    pet = core.active_pet(sv)
+    pet = _active_for_cli(sv)
     unlocked = core.unlocked_colors(pet["level"])
     natural  = core.color_for_level(pet["level"])
     current  = pet.get("color_choice") or natural
@@ -364,7 +481,7 @@ def cmd_rename(sv, args):
         return
 
     # Optional leading pet-number selector
-    target = core.active_pet(sv)
+    target = _active_for_cli(sv)
     name_parts = args
     if args[0].isdigit():
         n = int(args[0])
@@ -551,6 +668,7 @@ DISPATCH = {
     "color":   cmd_color,
     "bag":     cmd_bag,
     "equip":   cmd_equip,
+    "rules":   cmd_rules,
     "data":    cmd_data,
     "species": cmd_species,
     "preview": cmd_preview,

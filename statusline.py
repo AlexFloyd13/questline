@@ -217,7 +217,11 @@ def main():
     import core
     sv = core.load()
     core.ensure_first_pet(sv)
-    pet = core.active_pet(sv)
+    # Remember which terminal session just rendered so /buddy switch can
+    # pin to THIS terminal (not someone else's idle terminal).
+    sv["current_session"] = session_id
+    # Active pet is per-terminal (with global sv['active'] as fallback).
+    pet = core.active_pet_for_session(sv, session_id)
 
     # Stat the transcript so we can short-circuit when it hasn't changed
     # (avoids re-reading and re-counting the whole file every render).

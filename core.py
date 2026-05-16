@@ -205,8 +205,42 @@ def add_random_pet(sv):
 
 
 def active_pet(sv):
-    """The pet currently earning XP, or None if sv['active'] is stale."""
+    """The default active pet (used when there's no per-session override).
+    Returns None if sv['active'] is stale."""
     return sv["pets"].get(sv.get("active"))
+
+
+def active_pet_for_session(sv, session_id):
+    """Return the pet currently earning XP in THIS terminal session.
+
+    Each terminal can pin its own active pet via `/buddy switch <n>` —
+    so terminal A can be leveling Biscuit while terminal B grinds Eight.
+    The pin lives in sv['session_pets'][session_id]; if missing, falls
+    back to the global default sv['active']."""
+    pets = sv.setdefault("pets", {})
+    if not pets:
+        return None
+    sp  = sv.get("session_pets", {})
+    pid = sp.get(session_id) or sv.get("active")
+    if pid not in pets:
+        # Stale pin (pet was deleted?) — fall back to whatever's available
+        # and update the global default so future renders don't bounce.
+        pid = next(iter(pets))
+        sv["active"] = pid
+    return pets[pid]
+
+
+def pin_session_pet(sv, session_id, pet_id):
+    """Pin a pet to a specific terminal session. Caps the pinned dict at
+    30 entries (oldest insertion-order entries get pruned) so the save
+    doesn't grow unbounded with stale session IDs."""
+    sp = sv.setdefault("session_pets", {})
+    # Re-insert so it moves to the end (newest) of the insertion order.
+    sp.pop(session_id, None)
+    sp[session_id] = pet_id
+    if len(sp) > 30:
+        for old in list(sp.keys())[:-30]:
+            del sp[old]
 
 
 # --- Stats / leveling ------------------------------------------------------

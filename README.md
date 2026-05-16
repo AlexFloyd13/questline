@@ -35,7 +35,7 @@ Requires Python 3.8+. No dependencies — pure stdlib.
 
 - **XP from tokens.** Every Claude Code message you send adds its `input_tokens + output_tokens + cache_creation_input_tokens` to your active pet's XP. The status line ticks once per render.
 - **Leveling.** Quadratic curve calibrated so L100 ("max level") is achievable in ~3 months of max Claude Max-20 usage (~200M tokens cumulative). Early levels are fast, end-game is the grind.
-- **Multi-pet.** Each pet has its own L1→L100 progress. Switch which pet earns XP with `/buddy switch <n>`. Hatch new ones with `/buddy new` — drops, level-ups, and Christmas trees give hats that any pet can equip.
+- **Multi-pet, per-terminal.** Each pet has its own L1→L100 progress. Each terminal pins its own active pet via `/buddy switch <n>` — terminal A can be leveling Biscuit while terminal B is leveling Eight, both crediting XP simultaneously to their own pet. Use `--global` if you want to change the default for all terminals.
 - **Adventure mode.** The buddy walks rightward through a procedural landscape (trees, bushes, flowers, grass). Wild monsters spawn occasionally, walk toward the buddy, and a fight resolves into a win/loss + XP + possibly a hat drop.
 - **Christmas trees.** Ultra-rare (~1 in 20 000 world cols) festive landmark. Walking past one drops a guaranteed Rare+ hat into your inventory.
 
@@ -47,10 +47,11 @@ Invoke via `/buddy` in Claude Code or by running `python3 ~/.claude/buddy/cli.py
 |---------|--------------|
 | `/buddy show` | Render the active pet's full sprite + stats |
 | `/buddy list` | List every pet you own |
-| `/buddy switch <n>` | Make pet #n the active one (earns XP from now on) |
-| `/buddy new` | Hatch a brand-new random pet |
+| `/buddy switch <n>` | Pin pet #n as active in THIS terminal (add `--global` to set the default for all terminals) |
+| `/buddy new` | Hatch a brand-new random pet (auto-pinned to this terminal) |
 | `/buddy rename <name>` | Rename the active pet (or `rename <n> <name>` for pet #n) |
 | `/buddy color [<name>]` | List/set the active pet's color (cosmetic only; unlocked tier by level) |
+| `/buddy rules` | Print the full gameplay rules |
 | `/buddy bag` | Show your hat inventory |
 | `/buddy equip <n>` | Toggle hat #n on the active pet |
 | `/buddy species` | Show every species sprite |
