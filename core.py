@@ -239,22 +239,23 @@ def grow_stats(pet, rng):
 
 
 def make_drop(sv, rng, level=1):
-    """Generate one random hat drop. Rarity is rolled with a level-scaled
-    boost so higher-level pets get rarer hats more often — the boost
-    effectively subtracts from the roll, pushing it toward the lower
-    (rarer) thresholds in ITEM_RARITY_TABLE.
+    """Generate one random hat drop. Rarity is rolled with a small
+    level-scaled boost so higher-level pets get rarer hats more often,
+    but Mythic stays a chase — even at L100, only ~1 in 5 drops is
+    Mythic. The boost effectively subtracts from the roll, pushing it
+    toward the lower (rarer) thresholds in ITEM_RARITY_TABLE.
 
     Calibrated so:
       L1   - vanilla distribution (50% Common, 25% Uncommon, ..., 0.5% Mythic)
-      L25  - ~12% Mythic chance
-      L50  - ~25% Mythic chance
-      L100 - ~50% Mythic chance (a max-level pet should match its gold tier)
+      L25  - ~5% Mythic chance
+      L50  - ~10% Mythic chance
+      L100 - ~20% Mythic chance (still a chase, never a guarantee)
 
     Hat type is rolled separately from ALL_DROPS so any hat can drop at
     any rarity. Mutates sv['next_iid']."""
-    # 0.005 boost per level above 1, capped at 0.50 so we never go negative
-    # past Mythic. The cap also keeps L100+ from being deterministically Mythic.
-    boost = min(0.50, max(0, (level - 1) * 0.005))
+    # 0.002 boost per level above 1, capped at 0.30. Small enough that
+    # pulling a Mythic stays exciting even on a max-level pet.
+    boost = min(0.30, max(0, (level - 1) * 0.002))
     roll = rng.random() - boost
     rarity = "Common"
     for name, thr in ITEM_RARITY_TABLE:
