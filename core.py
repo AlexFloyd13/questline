@@ -67,9 +67,17 @@ def load():
         try:
             d = json.loads(SAVE_PATH.read_text())
             if isinstance(d, dict) and d.get("version") == 2:
-                d.setdefault("pets", {})
-                d.setdefault("inventory", [])
-                d.setdefault("watermarks", {})
+                # Defensive type normalization — a hand-edited save with
+                # wrong-type fields would otherwise crash downstream renders.
+                if not isinstance(d.get("pets"), dict):
+                    d["pets"] = {}
+                if not isinstance(d.get("inventory"), list):
+                    d["inventory"] = []
+                if not isinstance(d.get("watermarks"), dict):
+                    d["watermarks"] = {}
+                d.setdefault("next_id", 1)
+                d.setdefault("next_iid", 1)
+                d.setdefault("active", None)
                 return d
         except Exception:
             pass

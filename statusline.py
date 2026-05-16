@@ -85,7 +85,7 @@ def count_tokens(path):
 
 def render_line(sv, pet, width):
     """Status line = full-width scrolling world + single-line summary."""
-    import core, speech, adventure
+    import core, adventure
     from data import SPECIES
     lc = core.color_for_level(pet["level"])
     ts = core.total_stats(pet)
@@ -100,7 +100,9 @@ def render_line(sv, pet, width):
     # NOTE: this mutates the global SPECIES dict in-place with a finally-restore.
     # statusline.py runs in a single-threaded subprocess per render, so this is
     # safe in practice — do NOT call render_line() concurrently from threads.
-    _dbg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".debug_buddy")
+    # Use ~/.claude/buddy/.debug_buddy (matches README), not the script dir —
+    # keeps the contract stable for non-standard install paths or symlinks.
+    _dbg_path = str(Path.home() / ".claude" / "buddy" / ".debug_buddy")
     try:
         with open(_dbg_path) as _f:
             _dbg = _f.read().strip()

@@ -2,8 +2,6 @@
 
 A tiny ASCII pet for your [Claude Code](https://docs.claude.com/en/docs/claude-code) status line. Hatches a procedural creature, levels it up from your token usage, walks through a procedurally-generated landscape, fights wild monsters, finds hats, and occasionally bumps into a Christmas tree that gives it a present.
 
-![status line example](https://placeholder.svg)
-
 ```
 |                                            ^
 |                                          /^\
@@ -26,7 +24,7 @@ ________,,,_______________(*)____||_________||________
    {
      "statusLine": {
        "type": "command",
-       "command": "python3 /Users/YOUR-USERNAME/.claude/buddy/statusline.py"
+       "command": "python3 ~/.claude/buddy/statusline.py"
      }
    }
    ```
