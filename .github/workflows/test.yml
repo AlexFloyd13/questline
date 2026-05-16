@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Verify no external deps
+        run: |
+          # buddy is pure stdlib — fail loudly if anything was added
+          ! grep -rE "^(import|from) " --include='*.py' . \
+            | grep -v "^\./tests/" \
+            | grep -vE "(import|from) (sys|os|json|re|shutil|random|time|datetime|pathlib|importlib|collections)" \
+            | grep -vE "(import|from) (core|data|adventure|cli|statusline)"
+
+      - name: Run smoke tests
+        run: python3 -m unittest tests.smoke -v
+
+      - name: Import every module cleanly
+        run: |
+          python3 -c "
+          import sys; sys.path.insert(0, '.')
+          import core, data, adventure, cli, statusline
+          print('OK')
+          "

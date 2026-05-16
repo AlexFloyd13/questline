@@ -1,5 +1,10 @@
 # buddy
 
+[![tests](https://github.com/AlexFloyd13/buddy/actions/workflows/test.yml/badge.svg)](https://github.com/AlexFloyd13/buddy/actions/workflows/test.yml)
+[![python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
+[![license MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![no deps](https://img.shields.io/badge/dependencies-none-brightgreen)](#install)
+
 A tiny ASCII pet for your [Claude Code](https://docs.claude.com/en/docs/claude-code) status line. Hatches a procedural creature, levels it up from your token usage, walks through a procedurally-generated landscape, fights wild monsters, finds hats, and occasionally bumps into a Christmas tree that gives it a present.
 
 ```
