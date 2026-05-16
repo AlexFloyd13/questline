@@ -177,8 +177,17 @@ def render_line(sv, pet, width):
     else:
         event = core.c("walking...", "white")
 
+    # Counters: other pets in the stable (+1 pets means 1 OTHER pet besides
+    # the active one) and total hats in inventory. Both only show when
+    # nonzero so the status line stays clean for new players.
     extra_pets = len(sv["pets"]) - 1
-    extra = core.c("  +%d pets" % extra_pets, "white") if extra_pets > 0 else ""
+    extra_hats = len(core.inv_list(sv))
+    counter_parts = []
+    if extra_pets > 0:
+        counter_parts.append(core.c("+%d pets" % extra_pets, "white"))
+    if extra_hats > 0:
+        counter_parts.append(core.c("+%d hats" % extra_hats, "white"))
+    extras = "  " + "  ".join(counter_parts) if counter_parts else ""
 
     info = "  %s  %s  %s  %s  %s%s" % (
         core.name_tag(pet),
@@ -186,7 +195,7 @@ def render_line(sv, pet, width):
         core.c(core.xp_bar(pet, 12), lc),
         core.c("%d foes" % st.get("kills", 0), "white"),
         event,
-        extra,
+        extras,
     )
 
     return "\n".join([world, info])
