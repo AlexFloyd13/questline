@@ -431,6 +431,14 @@ def cmd_rules(sv, args):
          "Ultra-rare (~1 in 20 000 world cols). Gold star, red ornaments,",
          "red present box. Walk through it and get a guaranteed Rare+ hat.",
          "Each tree's gift is deterministic — it'll always give the same hat."),
+        ("SEASONAL EVENTS",
+         "The world picks up real-world holiday flair automatically:",
+         "  Jan 1-7   - new year confetti",
+         "  Feb 10-16 - valentine's hearts",
+         "  Mar 17    - st. patrick's clovers",
+         "  Jul 4     - independence day fireworks",
+         "  October   - halloween pumpkins",
+         "  December  - christmas tree spawn rate jumps 100x"),
     ]
     print()
     print("  " + core.c("BUDDY RULES", "white"))

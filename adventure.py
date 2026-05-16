@@ -239,12 +239,81 @@ _XMAS_TREE   = next((f for f in _BIG_TREES if "[" in "".join(f["art"])), None)
 _XMAS_LIMIT  = 50  # max world positions to remember as "already collected"
 
 # --- Seasonal events -------------------------------------------------------
-# In December, multiply the Christmas tree spawn rate ~100x so the forest
-# turns festive for the holiday month. The bump happens at module import
-# time; since statusline.py spawns a fresh Python subprocess for each
-# render, the rate is always up to date with the current month.
-if _XMAS_TREE is not None and time.localtime().tm_mon == 12:
-    _XMAS_TREE["rate"] = min(0.01, _XMAS_TREE["rate"] * 100)
+# The world subtly changes around real holidays. Each event either bumps an
+# existing feature's spawn rate or adds a holiday-only feature to
+# GROUND_FEATURES. Mutations happen at module import time; statusline.py
+# spawns a fresh subprocess per render so the world stays in sync with the
+# real date.
+#
+# All seasonal art stays tiny (1-2 rows) so it slots into the landscape
+# without disrupting the main canopy/trunk alignment.
+
+def _apply_seasonal_events():
+    """Mutate GROUND_FEATURES based on the real-world date so the
+    landscape gets holiday flair. Every seasonal art piece stays 1-2
+    rows tall and uses chars that don't collide with year-round
+    features (no `\\@/`, `*|*`, `(***)`, etc.)."""
+    now = time.localtime()
+    month, day = now.tm_mon, now.tm_mday
+
+    # JAN 1-7 — New Year's confetti scattered everywhere (gold/magenta/cyan).
+    if month == 1 and day <= 7:
+        GROUND_FEATURES.append({
+            "rate": 0.020, "color": "gold",
+            "char_colors": {".": "cyan", "'": "magenta"},
+            "art": [".'."],
+        })
+
+    # FEB 10-16 — Valentine's hearts speckle the ground (pink).
+    if month == 2 and 10 <= day <= 16:
+        GROUND_FEATURES.append({
+            "rate": 0.020, "color": "pink",
+            "art": ["<3"],
+        })
+
+    # MAR 17 — St. Patrick's Day clovers (lime green).
+    if month == 3 and day == 17:
+        GROUND_FEATURES.append({
+            "rate": 0.030, "color": "lime_green",
+            "art": ["%%"],
+        })
+
+    # OCT — Halloween pumpkins (orange w/ dark_green stem).
+    if month == 10:
+        GROUND_FEATURES.append({
+            "rate": 0.025, "color": "orange",
+            "char_colors": {".": "dark_green"},
+            "art": ["(o)"],         # tiny carved pumpkin face
+        })
+
+    # JUL 4 — Independence Day fireworks (red, white-slashes, blue burst).
+    if month == 7 and day == 4:
+        GROUND_FEATURES.append({
+            "rate": 0.015, "color": "red",
+            "char_colors": {"+": "blue", "\\": "white", "/": "white"},
+            "art": ["\\+/"],
+        })
+
+    # DEC — Christmas tree spawn rate explodes 100x.
+    if month == 12 and _XMAS_TREE is not None:
+        _XMAS_TREE["rate"] = min(0.01, _XMAS_TREE["rate"] * 100)
+
+
+_apply_seasonal_events()
+
+
+def current_season():
+    """Returns a short name for any active seasonal event, or None.
+    Useful for /buddy rules + tests."""
+    now = time.localtime()
+    m, d = now.tm_mon, now.tm_mday
+    if m == 1  and d <= 7:                return "new_year"
+    if m == 2  and 10 <= d <= 16:         return "valentines"
+    if m == 3  and d == 17:               return "st_patricks"
+    if m == 7  and d == 4:                return "independence_day"
+    if m == 10:                           return "halloween"
+    if m == 12:                           return "christmas"
+    return None
 
 
 def _is_xmas_tree_at(pos):

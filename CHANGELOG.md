@@ -4,6 +4,15 @@ All notable changes to **buddy** are documented here. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
+### Added
+- Full seasonal events calendar — Halloween pumpkins (October), Valentine's
+  hearts (Feb 10-16), St. Patrick's clovers (Mar 17), Independence Day
+  fireworks (Jul 4), New Year's confetti (Jan 1-7). December already
+  bumped the Christmas tree spawn rate 100x.
+- `orange` and `pink` color palette entries for the new seasonal art.
+- `adventure.current_season()` exposes the active season name (or None)
+  for downstream tooling and tests.
+
 ## [0.1.0] — 2026-05-16
 
 Initial open-source release.

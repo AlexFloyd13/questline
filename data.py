@@ -91,6 +91,8 @@ COLORS = {
     "sage_green":    "\033[38;5;108m",   # soft greyish-green
     "yellow":        "\033[33m",
     "red":           "\033[91m",         # flowers, apples, christmas
+    "orange":        "\033[38;5;208m",   # halloween pumpkins
+    "pink":          "\033[38;5;213m",   # valentine's hearts
 }
 
 RESET = "\033[0m"
