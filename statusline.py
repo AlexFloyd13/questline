@@ -177,16 +177,19 @@ def render_line(sv, pet, width):
     else:
         event = core.c("walking...", "white")
 
-    # Counters: other pets in the stable (+1 pets means 1 OTHER pet besides
-    # the active one) and total hats in inventory. Both only show when
-    # nonzero so the status line stays clean for new players.
+    # Counters: other pets in the stable, total hats in inventory, and the
+    # active daily-usage streak. All only show when nonzero/meaningful so
+    # the status line stays clean for new players.
     extra_pets = len(sv["pets"]) - 1
     extra_hats = len(core.inv_list(sv))
+    streak = sv.get("streak_days", 0)
     counter_parts = []
     if extra_pets > 0:
         counter_parts.append(core.c("+%d pets" % extra_pets, "white"))
     if extra_hats > 0:
         counter_parts.append(core.c("+%d hats" % extra_hats, "white"))
+    if streak >= 2:  # day 1 is uninteresting; show from 2+
+        counter_parts.append(core.c("%dd streak" % streak, "gold"))
     extras = "  " + "  ".join(counter_parts) if counter_parts else ""
 
     info = "  %s  %s  %s  %s  %s%s" % (
@@ -253,6 +256,21 @@ def main():
     # Tick the world forward (walking, encounter, combat).
     import adventure
     adventure.advance(sv, pet)
+
+    # Bookkeeping: daily streak + achievement check (cheap; both run after
+    # any XP changes so newly-unlocked milestones surface in the next render).
+    core.update_streak(sv)
+    newly = core.check_achievements(sv)
+    if newly:
+        # Log each unlocked achievement so the info row picks it up via
+        # the same st["log"] mechanism used by combat / christmas gifts.
+        from data import ACHIEVEMENTS
+        log = sv.setdefault("adventure", {}).setdefault("log", [])
+        for aid in newly:
+            name, _desc, _pred = ACHIEVEMENTS[aid]
+            log.append("unlocked: %s" % name)
+        del log[:-3]
+
     core.save(sv)
 
     sys.stdout.write(render_line(sv, pet, _term_width(inp)))

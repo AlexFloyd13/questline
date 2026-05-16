@@ -15,7 +15,7 @@ from data import (
     STATS, SALT, SPECIES, SPECIES_TIERS, PET_RARITY_TABLE,
     COLORS, RESET, RARITY_COLOR, LEVEL_COLOR_BANDS,
     xp_to_next, DROP_CHANCE_ON_LEVELUP, ITEM_RARITY_TABLE, HATS,
-    ALL_DROPS, EYE_STYLES, NAMES,
+    ALL_DROPS, EYE_STYLES, NAMES, ACHIEVEMENTS,
 )
 
 # Where the save file lives. Always inside the user's Claude config home
@@ -363,7 +363,64 @@ def apply_xp(sv, pet, amount):
     return events
 
 
-# --- Inventory -------------------------------------------------------------
+# --- Achievements + streak -----------------------------------------------
+
+def check_achievements(sv):
+    """Walk the ACHIEVEMENTS catalog and unlock any milestones that have
+    been met since the last check. Stores unlock dates in sv['achievements']
+    so an achievement is only awarded once. Returns the list of newly-
+    unlocked achievement IDs so callers can surface them in the UI."""
+    unlocked = sv.setdefault("achievements", {})
+    newly = []
+    for aid, (_name, _desc, predicate) in ACHIEVEMENTS.items():
+        if aid in unlocked:
+            continue
+        try:
+            if predicate(sv):
+                unlocked[aid] = today()
+                newly.append(aid)
+        except Exception:
+            # Bad data shouldn't break the status line; just skip this one.
+            pass
+    return newly
+
+
+def update_streak(sv):
+    """Update the daily-usage streak counter based on the current date vs
+    the last recorded active day. Returns the current streak length.
+
+    Rules:
+      - same day as last render -> no change
+      - exactly 1 day later     -> streak += 1
+      - more than 1 day later   -> streak resets to 1
+      - never rendered before   -> streak starts at 1"""
+    today_s = today()
+    last = sv.get("last_active_date")
+    streak = sv.get("streak_days", 0)
+    if last == today_s:
+        return streak  # already counted today
+    if last is None:
+        streak = 1
+    else:
+        try:
+            from datetime import date as _date
+            last_d  = _date.fromisoformat(last)
+            today_d = _date.fromisoformat(today_s)
+            gap = (today_d - last_d).days
+            if gap == 1:
+                streak += 1
+            elif gap > 1:
+                streak = 1
+            else:
+                streak = max(1, streak)
+        except Exception:
+            streak = 1
+    sv["last_active_date"] = today_s
+    sv["streak_days"]      = streak
+    return streak
+
+
+# --- Inventory ------------------------------------------------------------
 
 def get_equipped(sv, pet, slot):
     """The inventory entry currently equipped in `slot` on this pet, or

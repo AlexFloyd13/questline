@@ -238,6 +238,14 @@ _BIG_TREES   = [f for f in GROUND_FEATURES if len(f["art"]) >= 6]
 _XMAS_TREE   = next((f for f in _BIG_TREES if "[" in "".join(f["art"])), None)
 _XMAS_LIMIT  = 50  # max world positions to remember as "already collected"
 
+# --- Seasonal events -------------------------------------------------------
+# In December, multiply the Christmas tree spawn rate ~100x so the forest
+# turns festive for the holiday month. The bump happens at module import
+# time; since statusline.py spawns a fresh Python subprocess for each
+# render, the rate is always up to date with the current month.
+if _XMAS_TREE is not None and time.localtime().tm_mon == 12:
+    _XMAS_TREE["rate"] = min(0.01, _XMAS_TREE["rate"] * 100)
+
 
 def _is_xmas_tree_at(pos):
     """True iff a Christmas tree spawns at this world position. Uses the

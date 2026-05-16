@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import core
 from data import (
     SPECIES, SPECIES_TIERS, STATS, STAT_LABELS, RARITY_STARS, HATS,
-    xp_to_next,
+    ACHIEVEMENTS, xp_to_next,
 )
 
 
@@ -330,6 +330,30 @@ def cmd_data(sv, args):
     print(json.dumps(_pet_data(sv, _active_for_cli(sv)), indent=2))
 
 
+def cmd_achievements(sv, args):
+    """List every achievement, marking which ones the user has unlocked
+    (with unlock date) and which are still locked."""
+    unlocked = sv.get("achievements", {})
+    streak   = sv.get("streak_days", 0)
+    print()
+    print("  " + core.c("ACHIEVEMENTS  (%d/%d unlocked)" % (
+        len(unlocked), len(ACHIEVEMENTS)), "white"))
+    if streak >= 2:
+        print("  " + core.c("daily streak: %d days" % streak, "gold"))
+    print("  " + core.c("-" * 50, "white"))
+    for aid, (name, desc, _pred) in ACHIEVEMENTS.items():
+        if aid in unlocked:
+            mark = core.c("✓", "gold")
+            date = core.c("(%s)" % unlocked[aid], "white")
+            line = "%s %-18s %s  %s" % (mark, core.c(name, "gold"), date, desc)
+        else:
+            mark = core.c("·", "white")
+            line = "%s %-18s             %s" % (
+                mark, core.c(name, "white"), core.c(desc, "white"))
+        print("  " + line)
+    print()
+
+
 def cmd_help(sv, args):
     """Print the list of every /buddy subcommand with a short description.
     Points users at /buddy rules for the gameplay rules."""
@@ -347,6 +371,7 @@ def cmd_help(sv, args):
         ("bag",                 "list your hat inventory"),
         ("equip <n>",           "toggle hat #n on the active pet"),
         ("rules",               "print the full gameplay rules (XP, drops, combat, ...)"),
+        ("achievements",        "list every milestone (unlocked + locked) + streak"),
         ("data",                "raw JSON dump of the active pet"),
         ("species",             "show every species sprite side-by-side"),
         ("preview",             "render every species in the live status-line world"),
@@ -699,6 +724,8 @@ DISPATCH = {
     "bag":     cmd_bag,
     "equip":   cmd_equip,
     "rules":   cmd_rules,
+    "achievements": cmd_achievements,
+    "achv":    cmd_achievements,
     "help":    cmd_help,
     "?":       cmd_help,
     "--help":  cmd_help,

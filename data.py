@@ -215,6 +215,75 @@ NAMES = {
 }
 
 
+# --- Achievements ---------------------------------------------------------
+# Account-wide milestones. Each entry has a display name, a description,
+# and a `check(sv)` predicate that returns True when the milestone is met.
+# Achievements are unlocked once and never re-locked, even if state
+# changes (e.g. you delete the pet that hit L100).
+#
+# To keep the predicates cheap (they run on every status line render),
+# they should be O(pets) at most.
+
+def _has_pet_at_level(sv, lvl):
+    return any(p.get("level", 1) >= lvl for p in sv.get("pets", {}).values())
+
+def _has_pet_with_tokens(sv, n):
+    return any(p.get("total_tokens", 0) >= n
+               for p in sv.get("pets", {}).values())
+
+def _hatched_species(sv):
+    return {p["species"] for p in sv.get("pets", {}).values()}
+
+def _has_hat_rarity(sv, rarity):
+    return any(it.get("slot") == "hat" and it.get("rarity") == rarity
+               for it in sv.get("inventory", []))
+
+def _has_all_hat_types(sv):
+    owned = {it["type"] for it in sv.get("inventory", [])
+             if it.get("slot") == "hat"}
+    return all(h in owned for h in HATS)
+
+
+ACHIEVEMENTS = {
+    "first_hatch":   ("First Hatch",     "Welcome your first buddy",
+                      lambda sv: len(sv.get("pets", {})) >= 1),
+    "first_kill":    ("First Blood",     "Win your first fight",
+                      lambda sv: sv.get("adventure", {}).get("kills", 0) >= 1),
+    "ten_kills":     ("Hunter",          "Win 10 fights",
+                      lambda sv: sv.get("adventure", {}).get("kills", 0) >= 10),
+    "hundred_kills": ("Slayer",          "Win 100 fights",
+                      lambda sv: sv.get("adventure", {}).get("kills", 0) >= 100),
+    "first_xmas":    ("Holiday Spirit",  "Walk past a Christmas tree",
+                      lambda sv: len(sv.get("adventure", {})
+                                       .get("xmas_collected", [])) >= 1),
+    "first_mythic":  ("Chase Closed",    "Find your first Mythic-rarity hat",
+                      lambda sv: _has_hat_rarity(sv, "Mythic")),
+    "hatfile":       ("Hatfile",         "Own at least one of every hat type",
+                      lambda sv: _has_all_hat_types(sv)),
+    "shiny":         ("Sparkle",         "Hatch a shiny pet (1% chance)",
+                      lambda sv: any(p.get("shiny")
+                                     for p in sv.get("pets", {}).values())),
+    "five_pets":     ("Pet Stable",      "Own 5 pets at once",
+                      lambda sv: len(sv.get("pets", {})) >= 5),
+    "ten_pets":      ("Menagerie",       "Own 10 pets at once",
+                      lambda sv: len(sv.get("pets", {})) >= 10),
+    "all_species":   ("Zookeeper",       "Hatch every species at least once",
+                      lambda sv: set(SPECIES) <= _hatched_species(sv)),
+    "L25":           ("Cyan Tier",       "Reach level 25 on any pet",
+                      lambda sv: _has_pet_at_level(sv, 25)),
+    "L50":           ("Blue Tier",       "Reach level 50 on any pet",
+                      lambda sv: _has_pet_at_level(sv, 50)),
+    "L75":           ("Magenta Tier",    "Reach level 75 on any pet",
+                      lambda sv: _has_pet_at_level(sv, 75)),
+    "L100":          ("PRESTIGE",        "Reach level 100 (gold tier)",
+                      lambda sv: _has_pet_at_level(sv, 100)),
+    "1m_tokens":     ("Heavy User",      "Earn 1M lifetime tokens on one pet",
+                      lambda sv: _has_pet_with_tokens(sv, 1_000_000)),
+    "100m_tokens":   ("Token Whale",     "Earn 100M lifetime tokens on one pet",
+                      lambda sv: _has_pet_with_tokens(sv, 100_000_000)),
+}
+
+
 # --- Art attribution for OSS ----------------------------------------------
 # When a sprite is adapted from a third-party design, credit goes here so
 # the original artist is preserved even if the in-render signature was
