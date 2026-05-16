@@ -3,12 +3,11 @@
 A tiny ASCII pet for your [Claude Code](https://docs.claude.com/en/docs/claude-code) status line. Hatches a procedural creature, levels it up from your token usage, walks through a procedurally-generated landscape, fights wild monsters, finds hats, and occasionally bumps into a Christmas tree that gives it a present.
 
 ```
-|                                              ^
-|                                            /^\
-|         __                                //^\\
-|    (___()'`;                             ///^\\\
-|    /,    /`                  \@/         ///^\\\
-_____\"---\\__,,,_____________*|*____(*)___||_____,,,_
+|                           ^
+|         __         /\    /^\
+|    (___()'`;       /\   //^\\
+|    /,    /`        /\  ///^\\\   (***)       \@/
+_____\"---\\_________||_,,__||______\*/________*|*______,vvv__,,,,____
   Biscuit  Lv32  [###---------]  62 foes  last: won vs slime +320xp  +1 pets
 ```
 
