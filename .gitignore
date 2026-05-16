@@ -1,0 +1,20 @@
+# Personal data — never check in
+save.json
+save.json.*
+_stdin_sample.json
+
+# Local debug toggle — sprite override file
+.debug_buddy
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editor / OS junk
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
