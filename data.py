@@ -55,7 +55,7 @@ SPECIES_TIERS = {
     "Common":    ["duck", "cat", "rabbit", "owl", "mushroom", "ghost",
                   "penguin", "bird"],
     "Uncommon":  ["pig", "snail", "turtle", "crab", "fish"],
-    "Rare":      ["robot", "dog"],
+    "Rare":      ["robot", "dog", "octopus"],
     "Epic":      ["chonk", "cow"],
     "Legendary": ["chicken"],
 }

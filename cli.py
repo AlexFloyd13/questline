@@ -7,6 +7,7 @@ Run as `python3 cli.py <subcommand> [args...]`. Subcommands:
   list              list every pet you own
   switch <n>        make pet #n the one earning XP from now on
   new               hatch a brand-new random pet (becomes active)
+  rename <name>     rename the active pet (or `rename <n> <name>`)
   bag               list your hat inventory
   equip <n>         toggle hat #n on the active pet
   data              raw JSON dump of the active pet
@@ -272,6 +273,67 @@ def cmd_data(sv, args):
     print(json.dumps(_pet_data(sv, core.active_pet(sv)), indent=2))
 
 
+# Allow letters, digits, space, '-', '_', and a few punctuation chars that
+# can appear in cute pet names. Anything else (incl. ANSI escapes, control
+# chars, shell metachars) is stripped on rename so a malicious save edit
+# or paste can't corrupt the status line render.
+import re as _re
+_NAME_OK = _re.compile(r"[^A-Za-z0-9 _.'\-]")
+_NAME_MAX_LEN = 20
+
+
+def _sanitize_name(raw):
+    """Strip disallowed chars, collapse whitespace, cap length. Returns the
+    cleaned name (may be empty if everything was filtered)."""
+    cleaned = _NAME_OK.sub("", raw).strip()
+    cleaned = _re.sub(r"\s+", " ", cleaned)
+    return cleaned[:_NAME_MAX_LEN]
+
+
+def cmd_rename(sv, args):
+    """Rename a pet.
+
+    Forms:
+      /buddy rename <new name>           - renames the ACTIVE pet
+      /buddy rename <n> <new name>       - renames pet #n (see /buddy list)
+
+    Names are cleaned: letters, digits, space, `_`, `-`, `.`, `'` only;
+    other characters are stripped. Length capped at 20."""
+    pets = list(sv["pets"].values())
+    if not args:
+        print("  usage: /buddy rename <new name>")
+        print("         /buddy rename <n> <new name>")
+        return
+
+    # Optional leading pet-number selector
+    target = core.active_pet(sv)
+    name_parts = args
+    if args[0].isdigit():
+        n = int(args[0])
+        if n < 1 or n > len(pets):
+            print("  no pet #%d - you have %d." % (n, len(pets)))
+            return
+        target = pets[n - 1]
+        name_parts = args[1:]
+        if not name_parts:
+            print("  usage: /buddy rename %d <new name>" % n)
+            return
+
+    raw = " ".join(name_parts)
+    new_name = _sanitize_name(raw)
+    if not new_name:
+        print("  name must contain at least one letter, digit, or allowed punctuation.")
+        return
+
+    old_name = target["name"]
+    target["name"] = new_name
+    core.save(sv)
+    print()
+    print("  %s -> %s" % (core.c(old_name, "white"),
+                          core.name_tag(target)))
+    print()
+
+
 # --- Designer / debug commands --------------------------------------------
 # `species`, `preview`, and `hats` are tools for inspecting the sprite
 # catalog — useful when adding species or tuning hat positioning.
@@ -427,6 +489,7 @@ DISPATCH = {
     "list":    cmd_list,
     "switch":  cmd_switch,
     "new":     cmd_new,
+    "rename":  cmd_rename,
     "bag":     cmd_bag,
     "equip":   cmd_equip,
     "data":    cmd_data,
