@@ -192,8 +192,15 @@ def render_line(sv, pet, width):
         counter_parts.append(core.c("%dd streak" % streak, "gold"))
     extras = "  " + "  ".join(counter_parts) if counter_parts else ""
 
+    # Sleep state: append a small zZz marker next to the pet name if the
+    # pet hasn't earned XP in 24+ hours. Disappears the moment new tokens
+    # roll in for that pet.
+    name_seg = core.name_tag(pet)
+    if core.is_sleeping(pet):
+        name_seg += " " + core.c("zZz", "silver")
+
     info = "  %s  %s  %s  %s  %s%s" % (
-        core.name_tag(pet),
+        name_seg,
         core.c("Lvl %d" % pet["level"], lc),
         core.c(core.xp_bar(pet, 12), lc),
         core.c("%d foes" % st.get("kills", 0), "white"),

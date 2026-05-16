@@ -339,12 +339,16 @@ def make_drop(sv, rng, level=1):
 def apply_xp(sv, pet, amount):
     """Add XP to a pet. Cascades through any level-ups (themed stat gains
     + drop rolls) until the pet's xp falls below xp_to_next. Returns a
-    list of events the caller can use for UI feedback / logging."""
+    list of events the caller can use for UI feedback / logging.
+    Also stamps pet['last_xp_at'] for the sleep-state tracker."""
     events = []
     if amount <= 0:
         return events
     pet["xp"] += amount
     pet["total_tokens"] += amount
+    # Wake-up timestamp (ISO-8601 UTC). The sleep tracker reads this.
+    from datetime import datetime, timezone
+    pet["last_xp_at"] = datetime.now(timezone.utc).isoformat()
     while pet["xp"] >= xp_to_next(pet["level"]):
         pet["xp"] -= xp_to_next(pet["level"])
         pet["level"] += 1
@@ -361,6 +365,30 @@ def apply_xp(sv, pet, amount):
             sv["inventory"].append(drop)
             events.append({"type": "drop", "drop": drop})
     return events
+
+
+# --- Sleep state ----------------------------------------------------------
+# A pet that hasn't earned any XP in 24+ hours is "sleeping" — shown with
+# a small `zZz` indicator in the status line. As soon as new tokens arrive
+# from the active terminal, apply_xp updates last_xp_at and the pet wakes.
+
+SLEEP_AFTER_SECONDS = 24 * 3600
+
+
+def is_sleeping(pet):
+    """True iff this pet hasn't earned XP in the last 24h. New pets that
+    have never earned any XP are treated as awake (still in the welcome
+    moment, not asleep)."""
+    last = pet.get("last_xp_at")
+    if not last:
+        return False
+    try:
+        from datetime import datetime, timezone
+        last_t = datetime.fromisoformat(last)
+        gap = (datetime.now(timezone.utc) - last_t).total_seconds()
+        return gap > SLEEP_AFTER_SECONDS
+    except Exception:
+        return False
 
 
 # --- Achievements + streak -----------------------------------------------

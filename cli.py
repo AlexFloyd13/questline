@@ -112,10 +112,11 @@ def cmd_show(sv, args):
     pet  = core.active_pet_for_session(sv, sess) if sess else core.active_pet(sv)
     lc   = core.color_for_pet(pet)
     shiny = "  *SHINY*" if pet["shiny"] else ""
+    sleeping = "  zZz" if core.is_sleeping(pet) else ""
     print()
-    print("  " + core.c("%s %s  \"%s\"%s" % (
+    print("  " + core.c("%s %s  \"%s\"%s%s" % (
         RARITY_STARS[pet["rarity"]], pet["species"].upper(),
-        pet["name"], shiny), lc))
+        pet["name"], shiny, sleeping), lc))
     print("  " + core.c("Lv %d" % pet["level"], lc)
           + core.c("  -  %s  -  %s tier" % (pet["rarity"], lc), "white"))
     print("  " + core.c("-" * 42, lc))
@@ -431,6 +432,11 @@ def cmd_rules(sv, args):
          "Ultra-rare (~1 in 20 000 world cols). Gold star, red ornaments,",
          "red present box. Walk through it and get a guaranteed Rare+ hat.",
          "Each tree's gift is deterministic — it'll always give the same hat."),
+        ("SLEEP STATE",
+         "A pet that hasn't earned XP in 24+ hours falls asleep —",
+         "shown as `zZz` next to its name in the status line and /buddy show.",
+         "Sleeping is purely cosmetic. The moment new tokens credit to that",
+         "pet (from any terminal), the marker disappears and the pet wakes."),
         ("SEASONAL EVENTS",
          "The world picks up real-world holiday flair automatically:",
          "  Dec 31 - Jan 7  - new year confetti (IN THE SKY)",
