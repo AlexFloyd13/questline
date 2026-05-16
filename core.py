@@ -238,10 +238,24 @@ def grow_stats(pet, rng):
     return gains
 
 
-def make_drop(sv, rng):
-    """Generate one random hat drop. Rolls rarity independently of type,
-    so any hat can drop at any rarity. Mutates sv['next_iid']."""
-    roll = rng.random()
+def make_drop(sv, rng, level=1):
+    """Generate one random hat drop. Rarity is rolled with a level-scaled
+    boost so higher-level pets get rarer hats more often — the boost
+    effectively subtracts from the roll, pushing it toward the lower
+    (rarer) thresholds in ITEM_RARITY_TABLE.
+
+    Calibrated so:
+      L1   - vanilla distribution (50% Common, 25% Uncommon, ..., 0.5% Mythic)
+      L25  - ~12% Mythic chance
+      L50  - ~25% Mythic chance
+      L100 - ~50% Mythic chance (a max-level pet should match its gold tier)
+
+    Hat type is rolled separately from ALL_DROPS so any hat can drop at
+    any rarity. Mutates sv['next_iid']."""
+    # 0.005 boost per level above 1, capped at 0.50 so we never go negative
+    # past Mythic. The cap also keeps L100+ from being deterministically Mythic.
+    boost = min(0.50, max(0, (level - 1) * 0.005))
+    roll = rng.random() - boost
     rarity = "Common"
     for name, thr in ITEM_RARITY_TABLE:
         if roll < thr:
@@ -274,7 +288,7 @@ def apply_xp(sv, pet, amount):
             "gains": gains, "color": color_for_level(pet["level"]),
         })
         if rng.random() < DROP_CHANCE_ON_LEVELUP:
-            drop = make_drop(sv, rng)
+            drop = make_drop(sv, rng, level=pet["level"])
             sv["inventory"].append(drop)
             events.append({"type": "drop", "drop": drop})
     return events

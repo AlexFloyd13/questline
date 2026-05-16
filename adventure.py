@@ -344,7 +344,7 @@ def _combat_turn(sv, pet, st):
             st["kills"] = st.get("kills", 0) + 1
             drop = None
             if rng.random() < DROP_CHANCE_ON_WIN:
-                drop = core.make_drop(sv, rng)
+                drop = core.make_drop(sv, rng, level=pet["level"])
                 sv["inventory"].append(drop)
             enc["outcome"] = "win"
             msg = "won vs %s +%dxp" % (enc["key"], xp)
