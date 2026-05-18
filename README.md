@@ -20,7 +20,7 @@ _____\"---\\___________||____,_________||,________,________,___||__||_______||__
 
 1. Clone or copy this directory to `~/.claude/buddy`:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/buddy ~/.claude/buddy
+   git clone https://github.com/AlexFloyd13/buddy ~/.claude/buddy
    ```
 2. Wire it into Claude Code by adding to `~/.claude/settings.json`:
    ```json

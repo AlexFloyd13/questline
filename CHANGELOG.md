@@ -4,6 +4,15 @@ All notable changes to **buddy** are documented here. Follows [Keep a Changelog]
 
 ## [Unreleased]
 
+### Changed
+- Hat drop rates cut 4× — level-up: 20% → 5%, fight win: 6% → 1.5%.
+- XP curve steeper in mid/late game — quadratic coefficient doubled
+  (300→600), so L50 now takes ~54M tokens (~25 days at max) vs ~37M before,
+  and L100 takes ~370M tokens vs ~200M. Early levels (1-20) barely affected.
+
+### Fixed
+- README install URL replaced placeholder `YOUR-USERNAME` with `AlexFloyd13`.
+
 ### Added
 - Full seasonal events calendar — Halloween pumpkins (October), Valentine's
   hearts (Feb 10-16), St. Patrick's clovers (Mar 17), Independence Day

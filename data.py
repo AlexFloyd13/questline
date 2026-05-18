@@ -121,16 +121,16 @@ LEVEL_COLOR_BANDS = [
 # Curve is calibrated against max-tier Claude Max-20 usage (~200M tokens
 # over 3 months). Cumulative milestones:
 #
-#   L20  ~4.5M tokens   (~2 days at max)    -- early game, levels fly
-#   L50  ~37M tokens    (~17 days)          -- mid game
-#   L75  ~97M tokens    (~6 weeks)          -- expert
-#   L100 ~200M tokens   (~3 months)         -- MAX LEVEL, end game
+#   L20  ~5.4M tokens   (~2.5 days at max)  -- early game, levels fly
+#   L50  ~54M tokens    (~25 days)          -- mid game
+#   L75  ~157M tokens   (~10 weeks)         -- expert
+#   L100 ~370M tokens   (~6 months)         -- MAX LEVEL, end game
 #
 # You can spread XP across multiple pets via `/buddy switch <n>` — each pet
 # has its own L1->L100 grind from scratch.
 
 def xp_to_next(level):
-    return 20000 * level + 300 * level * level
+    return 20000 * level + 600 * level * level
 
 
 # Which fields in Claude's transcript JSON count toward XP.
@@ -142,8 +142,8 @@ XP_TOKEN_FIELDS = ["input_tokens", "output_tokens", "cache_creation_input_tokens
 # Drop chance is rolled at level-up and after winning a fight. The rarity
 # of what drops is rolled independently against ITEM_RARITY_TABLE.
 
-DROP_CHANCE_ON_LEVELUP = 0.20    # rolled on every level-up
-DROP_CHANCE_ON_WIN     = 0.06    # rolled on every fight win
+DROP_CHANCE_ON_LEVELUP = 0.05    # rolled on every level-up
+DROP_CHANCE_ON_WIN     = 0.015   # rolled on every fight win
 
 # Cumulative thresholds, low roll = rare. Base values are the L1 "vanilla"
 # distribution. Level scaling in core.make_drop subtracts a small per-level
