@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`/buddy` CLI dispatcher.
+"""`/questline` CLI dispatcher.
 
 Run as `python3 cli.py <subcommand> [args...]`. Subcommands:
 
@@ -27,6 +27,7 @@ import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import core
+import adventure
 from data import (
     SPECIES, SPECIES_TIERS, STATS, STAT_LABELS, RARITY_STARS, HATS,
     ACHIEVEMENTS, xp_to_next,
@@ -36,11 +37,12 @@ from data import (
 # --- Helpers ---------------------------------------------------------------
 
 def _pet_data(sv, pet):
-    """Structured pet snapshot — emitted as JSON after `show`/`new` so a
+    """Structured pet snapshot - emitted as JSON after `show`/`new` so a
     downstream agent can describe the pet without re-parsing the colored
     ASCII output."""
     ts = core.total_stats(pet)
     hat = core.get_equipped(sv, pet, "hat")
+    adv = adventure._state(pet)
     return {
         "name":         pet["name"],
         "species":      pet["species"],
@@ -52,8 +54,8 @@ def _pet_data(sv, pet):
         "top_stat":     max(ts, key=ts.get),
         "low_stat":     min(ts, key=ts.get),
         "total_tokens": pet["total_tokens"],
-        "wins":         pet.get("wins", 0),
-        "losses":       pet.get("losses", 0),
+        "wins":         adv.get("kills", 0),
+        "losses":       adv.get("losses", 0),
         "equipped_hat": hat["type"] if hat else None,
         "pet_count":    len(sv["pets"]),
         "first_hatch":  (len(sv["pets"]) == 1
@@ -80,7 +82,7 @@ def _hat_rows(hat_type):
 
 
 def _active_for_cli(sv):
-    """The pet a /buddy subcommand should operate on: the per-terminal
+    """The pet a /questline subcommand should operate on: the per-terminal
     pinned pet for this session, or the global default if unpinned."""
     sess = sv.get("current_session")
     if sess:
@@ -129,14 +131,15 @@ def cmd_show(sv, args):
     print("  %-10s %s  %s / %s" % (
         "XP", core.xp_bar(pet),
         core.fmt_tokens(pet["xp"]), core.fmt_tokens(need)))
+    adv = adventure._state(pet)
     print("  %-10s %s lifetime  -  W/L %d-%d" % (
         "", core.fmt_tokens(pet["total_tokens"]),
-        pet.get("wins", 0), pet.get("losses", 0)))
+        adv.get("kills", 0), adv.get("losses", 0)))
     hat = core.get_equipped(sv, pet, "hat")
     if hat:
         print("  gear: hat " + core.crarity(hat["type"], hat["rarity"]))
     if len(sv["pets"]) > 1:
-        print("  " + core.c("(%d pets - /buddy list)" % len(sv["pets"]), "white"))
+        print("  " + core.c("(%d pets - /questline list)" % len(sv["pets"]), "white"))
     print()
     print("---DATA---")
     print(json.dumps(_pet_data(sv, pet)))
@@ -144,7 +147,7 @@ def cmd_show(sv, args):
 
 def cmd_list(sv, args):
     """One row per pet. Markers show what's active where:
-       >  = pinned to THIS terminal (the one /buddy was run from)
+       >  = pinned to THIS terminal (the one /questline was run from)
        *  = global default (used by any terminal that hasn't pinned)"""
     pets = list(sv["pets"].values())
     sess = sv.get("current_session")
@@ -169,7 +172,7 @@ def cmd_list(sv, args):
             RARITY_STARS[p["rarity"]]))
     print()
     print("  " + core.c("> = active in this terminal   * = global default", "white"))
-    print("  " + core.c("/buddy switch <n>   -   /buddy new   -   /buddy bag", "white"))
+    print("  " + core.c("/questline switch <n>   -   /questline new   -   /questline bag", "white"))
     print()
 
 
@@ -177,11 +180,11 @@ def cmd_switch(sv, args):
     """Change which pet earns XP.
 
     Forms:
-      /buddy switch <n>              pin pet #n to THIS terminal only
-      /buddy switch <n> --global     pin pet #n as the default for every
+      /questline switch <n>              pin pet #n to THIS terminal only
+      /questline switch <n> --global     pin pet #n as the default for every
                                      terminal that hasn't been pinned
 
-    Per-terminal pinning lets you grind two pets simultaneously — terminal A
+    Per-terminal pinning lets you grind two pets simultaneously - terminal A
     can be leveling Biscuit while terminal B is leveling Eight. Each render
     of a terminal credits its own session tokens to whichever pet that
     terminal has pinned (or the global default if it hasn't pinned one)."""
@@ -189,7 +192,7 @@ def cmd_switch(sv, args):
     is_global = "--global" in args
     nargs = [a for a in args if a != "--global"]
     if not nargs or not nargs[0].isdigit():
-        print("  usage: /buddy switch <n> [--global]   (see /buddy list)")
+        print("  usage: /questline switch <n> [--global]   (see /questline list)")
         return
     n = int(nargs[0])
     if n < 1 or n > len(pets):
@@ -238,7 +241,7 @@ def cmd_new(sv, args):
     lc = core.color_for_pet(p)
     shiny = "  *SHINY*" if p["shiny"] else ""
     print()
-    print("  " + core.c("* a new buddy hatched! *", "white"))
+    print("  " + core.c("* a new pet hatched! *", "white"))
     print()
     print(core.render_sprite(sv, p))
     print()
@@ -250,7 +253,7 @@ def cmd_new(sv, args):
     _stat_block(p)
     print()
     print("  " + core.c(
-        "%s is now active - XP flows here. /buddy switch to change back."
+        "%s is now active - XP flows here. /questline switch to change back."
         % p["name"], "white"))
     print()
     print("---DATA---")
@@ -291,7 +294,7 @@ def cmd_bag(sv, args):
             RARITY_STARS[it["rarity"]],
             core.c(tag, "white")))
     print()
-    print("  " + core.c("/buddy equip <n>   (toggles it on your active pet)", "white"))
+    print("  " + core.c("/questline equip <n>   (toggles it on your active pet)", "white"))
     print()
 
 
@@ -300,7 +303,7 @@ def cmd_equip(sv, args):
     the one currently equipped."""
     inv = core.inv_list(sv)
     if not args or not args[0].isdigit():
-        print("  usage: /buddy equip <n>   (see /buddy bag)")
+        print("  usage: /questline equip <n>   (see /questline bag)")
         return
     n = int(args[0])
     if n < 1 or n > len(inv):
@@ -310,7 +313,7 @@ def cmd_equip(sv, args):
     pet = _active_for_cli(sv)
     print()
     if pet.get("equipped_hat") == it["iid"]:
-        # Same hat is already on — toggle off.
+        # Same hat is already on - toggle off.
         pet["equipped_hat"] = None
         core.save(sv)
         print("  %s unequipped its %s." % (pet["name"], it["type"]))
@@ -356,10 +359,10 @@ def cmd_achievements(sv, args):
 
 
 def cmd_help(sv, args):
-    """Print the list of every /buddy subcommand with a short description.
-    Points users at /buddy rules for the gameplay rules."""
+    """Print the list of every /questline subcommand with a short description.
+    Points users at /questline rules for the gameplay rules."""
     print()
-    print("  " + core.c("BUDDY COMMANDS", "white"))
+    print("  " + core.c("QUESTLINE COMMANDS", "white"))
     print("  " + core.c("-" * 42, "white"))
     print()
     rows = [
@@ -380,26 +383,26 @@ def cmd_help(sv, args):
         ("help",                "print this command list"),
     ]
     for name, desc in rows:
-        print("  " + core.c("/buddy " + name, "cyan") + " " * max(1, 20 - len(name)) + desc)
+        print("  " + core.c("/questline " + name, "cyan") + " " * max(1, 20 - len(name)) + desc)
     print()
-    print("  " + core.c("for gameplay rules: /buddy rules", "white"))
+    print("  " + core.c("for gameplay rules: /questline rules", "white"))
     print()
 
 
 def cmd_rules(sv, args):
-    """Print the gameplay rules — how XP, leveling, drops, combat, and
+    """Print the gameplay rules - how XP, leveling, drops, combat, and
     per-terminal pet pinning work. Useful as a refresher or for showing
-    new users what the buddy system actually does."""
+    new users what the questline system actually does."""
     rules = [
         ("XP",
          "Every Claude Code message credits its tokens (input + output +",
          "cache-creation) as XP to whichever pet is active in that terminal.",
-         "Cache-read tokens don't count (too cheap and huge — would warp the curve)."),
+         "Cache-read tokens don't count (too cheap and huge - would warp the curve)."),
         ("LEVELING",
-         "Quadratic curve.",
-         "  L20 ~ 4.5M tokens   (~2 days at max Claude Max-20 usage)",
-         "  L50 ~ 37M tokens    (~17 days)",
-         "  L100 ~ 200M tokens  (~3 months — max level / prestige)",
+         "Quadratic curve. At heavy usage (~30M tokens/day):",
+         "  L20  ~24M tokens    (~18 hours)",
+         "  L50  ~348M tokens   (~12 days)",
+         "  L100 ~2.73B tokens  (~3 months - max level / prestige)",
          "Levels keep climbing past 100 but the XP curve gets brutal."),
         ("COLOR TIERS",
          "Your pet's sprite color upgrades at level milestones:",
@@ -407,34 +410,34 @@ def cmd_rules(sv, args):
          "  L6-15   green      L76-99   silver",
          "  L16-30  cyan       L100+    GOLD  (prestige)",
          "  L31-50  blue",
-         "Use /buddy color to pick any color you've unlocked (cosmetic only)."),
+         "Use /questline color to pick any color you've unlocked (cosmetic only)."),
         ("HATS",
          "Drop sources:",
-         "  - 20% chance on every level-up",
-         "  -  6% chance on every fight win",
+         "  - 2% chance on every level-up",
+         "  - 0.8% chance on every fight win",
          "  - guaranteed Rare+ hat from every Christmas tree you walk past",
-         "Rarity scales with pet level — Mythic peaks at 5% at L100."),
+         "Rarity scales with pet level: Mythic peaks at 5% at L100."),
         ("RARITY TIERS",
          "Common (white)   Uncommon (green)   Rare (cyan)",
          "Epic (blue)      Legendary (magenta) Mythic (gold)",
-         "Rarity colors match the level colors — a L100 gold pet pulling",
+         "Rarity colors match the level colors - a L100 gold pet pulling",
          "a Mythic gold hat is the chase."),
         ("COMBAT",
          "Wild monsters spawn every ~33 walked cols. They approach, fight,",
          "and resolve in a few ticks. Win chance is biased by debugging +",
          "chaos stats. Wins award XP (and maybe a drop); losses give 1/5 XP."),
         ("MULTI-PET",
-         "Hatch new pets with /buddy new. Each pet has its own L1->L100",
-         "progression. /buddy switch <n> changes the active pet IN THIS",
-         "TERMINAL — different terminals can grind different pets in",
+         "Hatch new pets with /questline new. Each pet has its own L1->L100",
+         "progression. /questline switch <n> changes the active pet IN THIS",
+         "TERMINAL - different terminals can grind different pets in",
          "parallel. Add --global to switch the default for every terminal."),
         ("CHRISTMAS TREE",
          "Ultra-rare (~1 in 20 000 world cols). Gold star, red ornaments,",
          "red present box. Walk through it and get a guaranteed Rare+ hat.",
-         "Each tree's gift is deterministic — it'll always give the same hat."),
+         "Each tree's gift is deterministic - it'll always give the same hat."),
         ("SLEEP STATE",
-         "A pet that hasn't earned XP in 24+ hours falls asleep —",
-         "shown as `zZz` next to its name in the status line and /buddy show.",
+         "A pet that hasn't earned XP in 24+ hours falls asleep -",
+         "shown as `zZz` next to its name in the status line and /questline show.",
          "Sleeping is purely cosmetic. The moment new tokens credit to that",
          "pet (from any terminal), the marker disappears and the pet wakes."),
         ("SEASONAL EVENTS",
@@ -447,7 +450,7 @@ def cmd_rules(sv, args):
          "  December        - christmas tree spawn rate jumps 100x"),
     ]
     print()
-    print("  " + core.c("BUDDY RULES", "white"))
+    print("  " + core.c("QUESTLINE RULES", "white"))
     print("  " + core.c("-" * 42, "white"))
     for section in rules:
         head, *lines = section
@@ -456,7 +459,7 @@ def cmd_rules(sv, args):
         for ln in lines:
             print("    " + ln)
     print()
-    print("  " + core.c("/buddy show   /buddy list   /buddy bag   /buddy hats", "white"))
+    print("  " + core.c("/questline show   /questline list   /questline bag   /questline hats", "white"))
     print()
 
 
@@ -464,13 +467,13 @@ def cmd_color(sv, args):
     """Change the active pet's color.
 
     Forms:
-      /buddy color              - show unlocked colors + current pick
-      /buddy color <name>       - set the color (must be unlocked)
-      /buddy color auto         - clear the override (use natural level color)
+      /questline color              - show unlocked colors + current pick
+      /questline color <name>       - set the color (must be unlocked)
+      /questline color auto         - clear the override (use natural level color)
 
     Colors are unlocked by reaching the level band that grants them. You
     can pick any color you've already unlocked, including dropping back
-    down to a lower-tier color. Color choice is purely cosmetic — it
+    down to a lower-tier color. Color choice is purely cosmetic - it
     doesn't affect stats, drops, or anything else."""
     pet = _active_for_cli(sv)
     unlocked = core.unlocked_colors(pet["level"])
@@ -488,7 +491,7 @@ def cmd_color(sv, args):
             tag = " (natural)" if col == natural else ""
             print("  %s %s%s" % (marker, core.c(col, col), tag))
         print()
-        print("  " + core.c("/buddy color <name>   /buddy color auto", "white"))
+        print("  " + core.c("/questline color <name>   /questline color auto", "white"))
         print()
         return
 
@@ -538,15 +541,15 @@ def cmd_rename(sv, args):
     """Rename a pet.
 
     Forms:
-      /buddy rename <new name>           - renames the ACTIVE pet
-      /buddy rename <n> <new name>       - renames pet #n (see /buddy list)
+      /questline rename <new name>           - renames the ACTIVE pet
+      /questline rename <n> <new name>       - renames pet #n (see /questline list)
 
     Names are cleaned: letters, digits, space, `_`, `-`, `.`, `'` only;
     other characters are stripped. Length capped at 20."""
     pets = list(sv["pets"].values())
     if not args:
-        print("  usage: /buddy rename <new name>")
-        print("         /buddy rename <n> <new name>")
+        print("  usage: /questline rename <new name>")
+        print("         /questline rename <n> <new name>")
         return
 
     # Optional leading pet-number selector
@@ -560,7 +563,7 @@ def cmd_rename(sv, args):
         target = pets[n - 1]
         name_parts = args[1:]
         if not name_parts:
-            print("  usage: /buddy rename %d <new name>" % n)
+            print("  usage: /questline rename %d <new name>" % n)
             return
 
     raw = " ".join(name_parts)
@@ -580,7 +583,7 @@ def cmd_rename(sv, args):
 
 # --- Designer / debug commands --------------------------------------------
 # `species`, `preview`, and `hats` are tools for inspecting the sprite
-# catalog — useful when adding species or tuning hat positioning.
+# catalog - useful when adding species or tuning hat positioning.
 
 def cmd_species(sv, args):
     """Render every species sprite in a grid (3 per row, bottom-aligned)
@@ -590,7 +593,7 @@ def cmd_species(sv, args):
     gap = "     "
     names = list(SPECIES.keys())
     print()
-    print("  " + core.c("ALL %d BUDDIES (eye='o', no hat)" % len(names), "white"))
+    print("  " + core.c("ALL %d PETS (eye='o', no hat)" % len(names), "white"))
     print()
     for i in range(0, len(names), cols_per_row):
         batch = names[i:i + cols_per_row]
@@ -633,11 +636,12 @@ def cmd_preview(sv, args):
 
     print()
     for name in SPECIES:
-        pet = dict(template, species=name, name=name.capitalize())
+        # Per-pet adventure state, a few steps in so the walk is visible.
+        pet = dict(template, species=name, name=name.capitalize(),
+                   adventure={"buddy_col": 5})
         # Disposable save dict so the preview never touches real state.
         fake_sv = {"pets": {"preview": pet}, "active": "preview",
-                   "inventory": [],
-                   "adventure": {"buddy_col": 5}}
+                   "inventory": []}
         world = adventure.render_world(fake_sv, pet, width=80)
         tier  = species_to_tier.get(name, "(legacy)")
         print("  " + core.c("%-9s  %s" % (name.upper(), tier), "white"))
@@ -654,7 +658,7 @@ def cmd_hats(sv, args):
 
     print()
     print("  " + core.c(
-        "ALL BUDDIES x ALL HATS - verify hat sits on the head", "white"))
+        "ALL PETS x ALL HATS - verify hat sits on the head", "white"))
     print()
 
     for sp_name, sp in SPECIES.items():
@@ -692,7 +696,7 @@ def cmd_hats(sv, args):
             hat_col = max(0, int(head_center - hat_w / 2 + 0.5))
             panel_w = max(sprite_w, hat_col + hat_w)
 
-            # Bottom row of the hat OVERLAPS the head row — build a merged
+            # Bottom row of the hat OVERLAPS the head row - build a merged
             # head/hat row so the panel matches what shows in the live world.
             merged_head = list(sprite[0].ljust(panel_w))
             for j, ch in enumerate(rows[-1]):
@@ -754,12 +758,15 @@ DISPATCH = {
 def main():
     # Strip ANSI when piped (so `python3 cli.py show | less` is readable).
     core.USE_COLOR = sys.stdout.isatty()
-    sv = core.load()
-    core.ensure_first_pet(sv)
-    core.save(sv)
-    args = sys.argv[1:]
-    cmd  = args[0].lower() if args else "show"
-    DISPATCH.get(cmd, cmd_show)(sv, args[1:])
+    # One lock around the whole command so a /questline command cannot race
+    # a status-line render in another terminal (both load -> mutate -> save).
+    with core.save_lock():
+        sv = core.load()
+        core.ensure_first_pet(sv)
+        core.save(sv)
+        args = sys.argv[1:]
+        cmd  = args[0].lower() if args else "show"
+        DISPATCH.get(cmd, cmd_show)(sv, args[1:])
 
 
 if __name__ == "__main__":

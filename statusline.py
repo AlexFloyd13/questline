@@ -9,7 +9,7 @@ What we do each render:
   1. Read the hook payload from stdin.
   2. Load the user's save (or hatch a starter pet if it's the first run).
   3. Count any new tokens in the active session's transcript and award them
-     as XP to the active pet — leveling up if it crosses thresholds.
+     as XP to the active pet - leveling up if it crosses thresholds.
   4. Tick the adventure forward (walking, combat).
   5. Render the world + a one-line summary and write it to stdout.
 
@@ -32,7 +32,7 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 # `transcript_path` arrives unverified from the Claude Code hook payload.
 # A malicious payload (or buggy upstream) could point it at /etc/passwd,
 # ~/.ssh/id_rsa, etc. We sandbox transcript reads to the user's ~/.claude
-# tree — anything else gets silently rejected.
+# tree - anything else gets silently rejected.
 
 SAFE_TRANSCRIPT_ROOT = (Path.home() / ".claude").resolve()
 
@@ -90,7 +90,7 @@ def count_tokens(path):
     try:
         with open(safe, "r") as f:
             for line in f:
-                # Cheap pre-filter — only parse lines that look like they
+                # Cheap pre-filter - only parse lines that look like they
                 # contain a usage block. The transcript can have lots of
                 # non-assistant lines we don't care about.
                 if '"usage"' not in line:
@@ -108,12 +108,12 @@ def count_tokens(path):
 
 
 # --- Debug sprite override ------------------------------------------------
-# Write one of "none" / "pipe" / "block" to ~/.claude/buddy/.debug_buddy
+# Write one of "none" / "pipe" / "block" to ~/.claude/questline/.debug_questline
 # to replace the active pet with a minimal sprite for one render. Useful
 # for confirming whether the live landscape's alignment is the renderer's
 # fault or your terminal's. Delete the file to restore the real pet.
 
-_DEBUG_PATH = Path.home() / ".claude" / "buddy" / ".debug_buddy"
+_DEBUG_PATH = Path.home() / ".claude" / "questline" / ".debug_questline"
 
 _DEBUG_SPRITES = {
     "none":  [" "],                      # render with effectively no pet
@@ -140,7 +140,7 @@ def render_line(sv, pet, width):
     from data import SPECIES
 
     lc = core.color_for_pet(pet)
-    st = adventure._state(sv)
+    st = adventure._state(pet)
 
     # Honor the .debug_buddy override (single-threaded, safe to mutate
     # SPECIES in place since each render is its own subprocess).
@@ -224,61 +224,73 @@ def main():
     session_id = inp.get("session_id") or "unknown"
     transcript = _safe_transcript(inp.get("transcript_path"))
 
-    import core
-    sv = core.load()
-    core.ensure_first_pet(sv)
-    # Remember which terminal session just rendered so /buddy switch can
-    # pin to THIS terminal (not someone else's idle terminal).
-    sv["current_session"] = session_id
-    # Active pet is per-terminal (with global sv['active'] as fallback).
-    pet = core.active_pet_for_session(sv, session_id)
+    import core, adventure
 
-    # Stat the transcript so we can short-circuit when it hasn't changed
-    # (avoids re-reading and re-counting the whole file every render).
-    try:
-        s = os.stat(transcript) if transcript else None
-        mtime = s.st_mtime if s else 0
-        size  = s.st_size  if s else 0
-    except Exception:
-        mtime, size = 0, 0
+    # Hold the save lock across the whole load -> mutate -> save so a
+    # second terminal rendering at the same instant cannot clobber us.
+    with core.save_lock():
+        sv = core.load()
+        core.ensure_first_pet(sv)
+        # Remember which terminal session just rendered so /questline switch
+        # can pin to THIS terminal (not someone else's idle terminal).
+        sv["current_session"] = session_id
+        # Active pet is per-terminal (with global sv['active'] as fallback).
+        pet = core.active_pet_for_session(sv, session_id)
 
-    # Per-session watermark: remember last (mtime, size, tokens) so we can
-    # award only NEW tokens since the last render of this session.
-    wm = sv.setdefault("watermarks", {})
-    entry = wm.get(session_id)
-    unchanged = entry and entry.get("mtime") == mtime and entry.get("size") == size
+        # Stat the transcript so we can short-circuit when it hasn't changed
+        # (avoids re-reading and re-counting the whole file every render).
+        try:
+            s = os.stat(transcript) if transcript else None
+            mtime = s.st_mtime if s else 0
+            size  = s.st_size  if s else 0
+        except Exception:
+            mtime, size = 0, 0
 
-    if transcript and not unchanged:
-        total = count_tokens(transcript)
-        prev  = entry.get("tokens", 0) if entry else 0
-        delta = max(0, total - prev)
-        if delta:
-            core.apply_xp(sv, pet, delta)
-        wm[session_id] = {"mtime": mtime, "size": size, "tokens": total}
-        # Cap the watermark dict at 30 sessions so it doesn't grow forever.
-        if len(wm) > 30:
-            for sid in sorted(wm, key=lambda s: wm[s].get("mtime", 0))[:-30]:
-                del wm[sid]
+        # Per-session watermark: remember last (mtime, size, tokens) so we
+        # can award only NEW tokens since the last render of this session.
+        wm = sv.setdefault("watermarks", {})
+        entry = wm.get(session_id)
+        unchanged = (entry and entry.get("mtime") == mtime
+                     and entry.get("size") == size)
 
-    # Tick the world forward (walking, encounter, combat).
-    import adventure
-    adventure.advance(sv, pet)
+        if transcript and not unchanged:
+            total = count_tokens(transcript)
+            if entry is None:
+                # First time we've seen this session (or its watermark was
+                # evicted below). Seed the watermark at the current total
+                # and award nothing: granting the whole pre-existing
+                # transcript here would re-award XP every time an old
+                # watermark is evicted and that session renders again.
+                delta = 0
+            else:
+                delta = max(0, total - entry.get("tokens", 0))
+            if delta:
+                core.apply_xp(sv, pet, delta)
+            wm[session_id] = {"mtime": mtime, "size": size, "tokens": total}
+            # Cap the watermark dict so it never grows forever. Eviction is
+            # safe now: a re-seen session just re-seeds and awards 0.
+            if len(wm) > 64:
+                for sid in sorted(wm, key=lambda s: wm[s].get("mtime", 0))[:-64]:
+                    del wm[sid]
 
-    # Bookkeeping: daily streak + achievement check (cheap; both run after
-    # any XP changes so newly-unlocked milestones surface in the next render).
-    core.update_streak(sv)
-    newly = core.check_achievements(sv)
-    if newly:
-        # Log each unlocked achievement so the info row picks it up via
-        # the same st["log"] mechanism used by combat / christmas gifts.
-        from data import ACHIEVEMENTS
-        log = sv.setdefault("adventure", {}).setdefault("log", [])
-        for aid in newly:
-            name, _desc, _pred = ACHIEVEMENTS[aid]
-            log.append("unlocked: %s" % name)
-        del log[:-3]
+        # Tick the world forward (walking, encounter, combat).
+        adventure.advance(sv, pet)
 
-    core.save(sv)
+        # Bookkeeping: daily streak + achievement check (cheap; both run
+        # after XP changes so new milestones surface in the next render).
+        core.update_streak(sv)
+        newly = core.check_achievements(sv)
+        if newly:
+            # Log each unlock to the active pet's own combat log so the info
+            # row surfaces it the same way it shows combat / christmas gifts.
+            from data import ACHIEVEMENTS
+            log = adventure._state(pet)["log"]
+            for aid in newly:
+                name, _desc, _pred = ACHIEVEMENTS[aid]
+                log.append("unlocked: %s" % name)
+            del log[:-3]
+
+        core.save(sv)
 
     sys.stdout.write(render_line(sv, pet, _term_width(inp)))
 
@@ -287,13 +299,13 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # A broken status line is worse than a boring one — fall back to
-        # a one-line mini-face plus the word "buddy" so the user knows
+        # A broken status line is worse than a boring one - fall back to
+        # a one-line mini-face plus the word "questline" so the user knows
         # something is still alive.
         try:
             import core
             sv = core.load()
             core.ensure_first_pet(sv)
-            sys.stdout.write(core.mini_face(core.active_pet(sv)) + " buddy")
+            sys.stdout.write(core.mini_face(core.active_pet(sv)) + " questline")
         except Exception:
-            sys.stdout.write("buddy")
+            sys.stdout.write("questline")

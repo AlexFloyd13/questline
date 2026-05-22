@@ -23,7 +23,7 @@ jobs:
 
       - name: Verify no external deps
         run: |
-          # buddy is pure stdlib — fail loudly if anything was added
+          # questline is pure stdlib - fail loudly if anything was added
           ! grep -rE "^(import|from) " --include='*.py' . \
             | grep -v "^\./tests/" \
             | grep -vE "(import|from) (sys|os|json|re|shutil|random|time|datetime|pathlib|importlib|collections)" \

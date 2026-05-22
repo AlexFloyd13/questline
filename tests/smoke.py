@@ -1,11 +1,11 @@
-"""Smoke tests for buddy.
+"""Smoke tests for questline.
 
 Run with:  python3 -m unittest tests.smoke -v
 
 Every test isolates state via a tempdir, so they don't touch your real
-~/.claude/buddy/save.json. No external dependencies — pure stdlib.
+~/.claude/questline/save.json. No external dependencies - pure stdlib.
 
-These tests aren't comprehensive — they're a guardrail against the most
+These tests aren't comprehensive - they're a guardrail against the most
 embarrassing kinds of regression: render crashes, save corruption, and
 input-handling holes."""
 from __future__ import annotations
@@ -81,7 +81,7 @@ class StatusLineSmoke(unittest.TestCase):
         self.assertGreater(len(out), 0)
 
     def test_corrupted_save_wrong_types(self):
-        """Hand-edited save with wrong-type fields shouldn't crash —
+        """Hand-edited save with wrong-type fields shouldn't crash -
         core.load() normalizes them defensively."""
         out = _run_status(save_state={"version": 2, "pets": "broken",
                                       "inventory": "also broken"})
@@ -176,6 +176,65 @@ class PathTraversalGuard(unittest.TestCase):
     def test_accepts_under_claude_root(self):
         legit = str(Path.home() / ".claude" / "projects" / "abc.jsonl")
         self.assertEqual(statusline._safe_transcript(legit), legit)
+
+
+class CoreMechanics(unittest.TestCase):
+    """Leveling math, per-pet adventure state, and save migration."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        core.SAVE_PATH = Path(self._tmp) / "save.json"
+
+    def test_apply_xp_levels_up(self):
+        """One XP award past the L1 threshold lands the pet at L2 with the
+        remainder carried over."""
+        pet = _minimal_pet(level=1)
+        sv = {"pets": {"p1": pet}, "inventory": [], "next_iid": 1}
+        core.apply_xp(sv, pet, core.xp_to_next(1) + 5)
+        self.assertEqual(pet["level"], 2)
+        self.assertEqual(pet["xp"], 5)
+
+    def test_apply_xp_cascades_multiple_levels(self):
+        """A large award cascades through several levels in one call."""
+        pet = _minimal_pet(level=1)
+        sv = {"pets": {"p1": pet}, "inventory": [], "next_iid": 1}
+        need = sum(core.xp_to_next(lvl) for lvl in range(1, 6))
+        core.apply_xp(sv, pet, need)
+        self.assertEqual(pet["level"], 6)
+        self.assertEqual(pet["xp"], 0)
+
+    def test_adventure_state_is_per_pet(self):
+        """Each pet owns its adventure dict; one pet's kills don't leak
+        into another's."""
+        import adventure
+        a, b = _minimal_pet(), _minimal_pet()
+        adventure._state(a)["kills"] = 7
+        self.assertEqual(adventure._state(b)["kills"], 0)
+        self.assertEqual(adventure._state(a)["kills"], 7)
+
+    def test_legacy_adventure_migrates_to_a_pet(self):
+        """A pre-rename save kept one shared `adventure` dict; load() moves
+        it onto the active pet so foes/log/position carry over."""
+        core.SAVE_PATH.write_text(json.dumps({
+            "version": 2, "active": "p1",
+            "pets": {"p1": _minimal_pet()},
+            "adventure": {"buddy_col": 99, "kills": 12},
+        }))
+        sv = core.load()
+        self.assertNotIn("adventure", sv)
+        self.assertEqual(sv["pets"]["p1"]["adventure"]["kills"], 12)
+
+    def test_recompute_level_matches_curve(self):
+        """load() re-derives level from total_tokens, so a stored level
+        that disagrees with the current curve gets corrected."""
+        pet = _minimal_pet(level=99)        # stored level is a lie
+        pet["total_tokens"] = core.xp_to_next(1) + core.xp_to_next(2)
+        core.SAVE_PATH.write_text(json.dumps({
+            "version": 2, "active": "p1", "pets": {"p1": pet},
+        }))
+        sv = core.load()
+        self.assertEqual(sv["pets"]["p1"]["level"], 3)
+        self.assertEqual(sv["pets"]["p1"]["xp"], 0)
 
 
 if __name__ == "__main__":

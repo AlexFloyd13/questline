@@ -1,10 +1,14 @@
-# Personal data — never check in
+# Personal data - never check in
 save.json
 save.json.*
+save.tmp
 _stdin_sample.json
 
-# Local debug toggle — sprite override file
-.debug_buddy
+# Launch notes - local planning, not part of the published project
+reddit-post.md
+
+# Local debug toggle - sprite override file
+.debug_questline
 
 # Python bytecode
 __pycache__/

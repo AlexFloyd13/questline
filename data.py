@@ -1,4 +1,4 @@
-"""Static data for the buddy system.
+"""Static data for the questline system.
 
 Everything that doesn't change at runtime lives here:
   - stat names, species pools, rarity tables
@@ -16,7 +16,7 @@ If you want to add a new species, the steps are:
 
 # --- Stats -----------------------------------------------------------------
 # Each pet has five stats. Two of them (the species "theme") gain faster
-# during level-up. Stats are cosmetic — they don't affect combat much.
+# during level-up. Stats are cosmetic - they don't affect combat much.
 
 STATS = ["debugging", "patience", "chaos", "wisdom", "snark"]
 
@@ -32,7 +32,7 @@ STAT_LABELS = {
 # --- Pet generation seed ---------------------------------------------------
 # SALT mixes into the deterministic hash that picks each user's FIRST pet's
 # species, stats, eyes, and name (so the starter pet is reproducible per-user
-# across reinstalls). It is NOT a secret — change it only if you want to
+# across reinstalls). It is NOT a secret - change it only if you want to
 # wipe everyone's starter-pet identity on upgrade. Combat outcomes, drops,
 # and encounters are all rolled with their own seeds and don't touch SALT.
 
@@ -81,8 +81,8 @@ COLORS = {
     "cyan":          "\033[96m",
     "blue":          "\033[94m",
     "magenta":       "\033[95m",
-    "silver":        "\033[38;5;250m",   # L76-99 — precursor to gold
-    "gold":          "\033[38;5;220m",   # L100+ — only the true max-level pets
+    "silver":        "\033[38;5;250m",   # L76-99 - precursor to gold
+    "gold":          "\033[38;5;220m",   # L100+ - only the true max-level pets
     "brown":         "\033[38;5;130m",   # tree trunks
     "dark_green":    "\033[38;5;22m",    # ground line
     "pine_green":    "\033[38;5;28m",    # darkest tree foliage
@@ -99,7 +99,7 @@ RESET = "\033[0m"
 
 # As your pet levels up, its sprite color climbs this ladder. The first
 # entry whose threshold is >= the pet's level wins.
-# Gold (L100+) is the prestige tier — reaching it is the goal of the
+# Gold (L100+) is the prestige tier - reaching it is the goal of the
 # whole grind. Silver (L76-99) is the "almost there" precursor.
 LEVEL_COLOR_BANDS = [
     (5,     "white"),
@@ -118,23 +118,22 @@ LEVEL_COLOR_BANDS = [
 # every assistant message contributes its input + output + cache-creation
 # tokens to the active pet.
 #
-# Curve is calibrated against max-tier Claude Max-20 usage (~200M tokens
-# over 3 months). Cumulative milestones:
+# Curve calibrated so heavy daily usage (~30M tokens/day) takes roughly:
 #
-#   L20  ~5.4M tokens   (~2.5 days at max)  -- early game, levels fly
-#   L50  ~54M tokens    (~25 days)          -- mid game
-#   L75  ~157M tokens   (~10 weeks)         -- expert
-#   L100 ~370M tokens   (~6 months)         -- MAX LEVEL, end game
+#   L20  ~24M tokens    (~18 hours)         -- early game, levels come fast
+#   L50  ~348M tokens   (~12 days)          -- mid game ramp-up
+#   L75  ~1.15B tokens  (~6 weeks)          -- expert grind
+#   L100 ~2.73B tokens  (~3 months)         -- MAX LEVEL, end game
 #
-# You can spread XP across multiple pets via `/buddy switch <n>` — each pet
+# You can spread XP across multiple pets via `/questline switch <n>` - each pet
 # has its own L1->L100 grind from scratch.
 
 def xp_to_next(level):
-    return 20000 * level + 600 * level * level
+    return 20000 * level + 8000 * level * level
 
 
 # Which fields in Claude's transcript JSON count toward XP.
-# (cache_read is excluded — it's huge and effectively free, would warp the curve.)
+# (cache_read is excluded - it's huge and effectively free, would warp the curve.)
 XP_TOKEN_FIELDS = ["input_tokens", "output_tokens", "cache_creation_input_tokens"]
 
 
@@ -142,8 +141,8 @@ XP_TOKEN_FIELDS = ["input_tokens", "output_tokens", "cache_creation_input_tokens
 # Drop chance is rolled at level-up and after winning a fight. The rarity
 # of what drops is rolled independently against ITEM_RARITY_TABLE.
 
-DROP_CHANCE_ON_LEVELUP = 0.05    # rolled on every level-up
-DROP_CHANCE_ON_WIN     = 0.015   # rolled on every fight win
+DROP_CHANCE_ON_LEVELUP = 0.02    # rolled on every level-up
+DROP_CHANCE_ON_WIN     = 0.008   # rolled on every fight win
 
 # Cumulative thresholds, low roll = rare. Base values are the L1 "vanilla"
 # distribution. Level scaling in core.make_drop subtracts a small per-level
@@ -160,12 +159,12 @@ ITEM_RARITY_TABLE = [
 
 
 # --- Hats ------------------------------------------------------------------
-# Each hat is a list of rows. The BOTTOM row sits ON the buddy's head row
+# Each hat is a list of rows. The BOTTOM row sits ON the pet's head row
 # (sprite row 0), overlapping any head chars there; additional rows stack
-# upward into the previously-empty sky above the buddy.
+# upward into the previously-empty sky above the pet.
 #
 # Hats are the only equipment slot. Held items existed in an earlier draft
-# but were removed — they fought the buddy silhouette for screen space.
+# but were removed - they fought the pet silhouette for screen space.
 
 HATS = {
     "beanie":    [" () ",     "(===)"],                  # knit cap + pom
@@ -179,7 +178,7 @@ HATS = {
     "halo":      [" ~~~ ",    "( O )"],                  # glowing halo
 }
 
-# All possible drops (currently hats only — items were removed).
+# All possible drops (currently hats only - items were removed).
 ALL_DROPS = [("hat", h) for h in HATS]
 
 
@@ -233,6 +232,16 @@ def _has_pet_with_tokens(sv, n):
     return any(p.get("total_tokens", 0) >= n
                for p in sv.get("pets", {}).values())
 
+def _total_kills(sv):
+    # Each pet tracks its own combat wins; sum for account-wide milestones.
+    return sum(p.get("adventure", {}).get("kills", 0)
+               for p in sv.get("pets", {}).values())
+
+def _xmas_trees_passed(sv):
+    # Christmas trees walked past, summed across every pet.
+    return sum(len(p.get("adventure", {}).get("xmas_collected", []))
+               for p in sv.get("pets", {}).values())
+
 def _hatched_species(sv):
     return {p["species"] for p in sv.get("pets", {}).values()}
 
@@ -247,17 +256,16 @@ def _has_all_hat_types(sv):
 
 
 ACHIEVEMENTS = {
-    "first_hatch":   ("First Hatch",     "Welcome your first buddy",
+    "first_hatch":   ("First Hatch",     "Welcome your first pet",
                       lambda sv: len(sv.get("pets", {})) >= 1),
     "first_kill":    ("First Blood",     "Win your first fight",
-                      lambda sv: sv.get("adventure", {}).get("kills", 0) >= 1),
+                      lambda sv: _total_kills(sv) >= 1),
     "ten_kills":     ("Hunter",          "Win 10 fights",
-                      lambda sv: sv.get("adventure", {}).get("kills", 0) >= 10),
+                      lambda sv: _total_kills(sv) >= 10),
     "hundred_kills": ("Slayer",          "Win 100 fights",
-                      lambda sv: sv.get("adventure", {}).get("kills", 0) >= 100),
+                      lambda sv: _total_kills(sv) >= 100),
     "first_xmas":    ("Holiday Spirit",  "Walk past a Christmas tree",
-                      lambda sv: len(sv.get("adventure", {})
-                                       .get("xmas_collected", [])) >= 1),
+                      lambda sv: _xmas_trees_passed(sv) >= 1),
     "first_mythic":  ("Chase Closed",    "Find your first Mythic-rarity hat",
                       lambda sv: _has_hat_rarity(sv, "Mythic")),
     "hatfile":       ("Hatfile",         "Own at least one of every hat type",
@@ -286,40 +294,42 @@ ACHIEVEMENTS = {
 }
 
 
-# --- Art attribution for OSS ----------------------------------------------
-# When a sprite is adapted from a third-party design, credit goes here so
-# the original artist is preserved even if the in-render signature was
-# stripped for layout reasons. Add an entry whenever you add a new sprite
-# that isn't your own original work.
+# --- Art attribution ------------------------------------------------------
+# The species sprites are adapted from the ASCII Art Archive (asciiart.eu),
+# used under its stated terms: free reuse for a non-commercial project as
+# long as the artist is credited. Most archive pieces are unsigned; where
+# the original carried an artist's initials they are named below. Those
+# initials could not be kept legibly inside sprites this small (3-5 rows),
+# so the credit is preserved here and in LICENSE instead. If you contribute
+# a new sprite, add its source here and to LICENSE.
 
 ART_CREDITS = {
-    "fish":    "Max (user-provided design)",
-    "pig":     "Unknown — user-provided design",
-    "bird":    "mrf (signature stripped from render, credited here)",
-    "chicken": "Unknown — user-provided design",
-    "cat":     "asciiart.eu (canonical 3-row cat face)",
-    "dog":     "Joan G. Stark (jgs) — classic sitting-dog ASCII "
-               "(signature stripped from render)",
-    "cow":     "Tony Monroe / cowsay default.cow — "
-               "https://en.wikipedia.org/wiki/Cowsay",
+    "dog":     "Joan G. Stark (jgs), via asciiart.eu",
+    "bird":    "mrf, via asciiart.eu",
+    "fish":    "via asciiart.eu (initials 'Max' in the original)",
+    "cat":     "via asciiart.eu (traditional unsigned design)",
+    "cow":     "via asciiart.eu (the well-known cowsay cow)",
+    "pig":     "via asciiart.eu (unsigned)",
+    "chicken": "via asciiart.eu (unsigned)",
+    "penguin": "via asciiart.eu (unsigned)",
 }
 
 
 # --- Species sprites -------------------------------------------------------
 # Each species is keyed by name and has:
 #   theme : two stats that gain faster on level-up
-#   mini  : compact one-line face for the /buddy switch summary
+#   mini  : compact one-line face for the /questline switch summary
 #   art   : list of strings, one per sprite row. {e} is replaced by the
 #           pet's eye character at render time.
 #
-# Within a species, every row in `art` MUST be the same width — otherwise
+# Within a species, every row in `art` MUST be the same width - otherwise
 # the silhouette goes ragged on the left or right edge. The first row
 # (row 0) is treated as the "head" row by the hat renderer; if it's all
 # spaces, the renderer falls through to row 1 (used by the chicken so the
 # hat lands above the actual head instead of overwriting it).
 
 SPECIES = {
-    # 3 rows x 7 cols — side-profile duck with body + beak
+    # 3 rows x 7 cols - side-profile duck with body + beak
     "duck": {
         "theme": ["patience", "wisdom"],
         "mini":  "({e}_>",
@@ -330,7 +340,7 @@ SPECIES = {
         ],
     },
 
-    # 3 rows x 7 cols — proven asciiart.eu cat face design
+    # 3 rows x 7 cols - proven asciiart.eu cat face design
     "cat": {
         "theme": ["snark", "chaos"],
         "mini":  "({e}_{e})",
@@ -341,7 +351,7 @@ SPECIES = {
         ],
     },
 
-    # 3 rows x 7 cols — long bunny ears + paws
+    # 3 rows x 7 cols - long bunny ears + paws
     "rabbit": {
         "theme": ["patience", "debugging"],
         "mini":  "({e}.{e})",
@@ -352,7 +362,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 5 cols — ear tufts + Y-beak + talons
+    # 4 rows x 5 cols - ear tufts + Y-beak + talons
     "owl": {
         "theme": ["wisdom", "debugging"],
         "mini":  "({e}Y{e})",
@@ -364,7 +374,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 11 cols — toadstool with rounded cap (parens, not slashes)
+    # 4 rows x 11 cols - toadstool with rounded cap (parens, not slashes)
     "mushroom": {
         "theme": ["wisdom", "chaos"],
         "mini":  "(@_@)",
@@ -376,7 +386,7 @@ SPECIES = {
         ],
     },
 
-    # 3 rows x 5 cols — hollow eyes + wavy tail
+    # 3 rows x 5 cols - hollow eyes + wavy tail
     "ghost": {
         "theme": ["chaos", "wisdom"],
         "mini":  "({e} {e})",
@@ -387,7 +397,7 @@ SPECIES = {
         ],
     },
 
-    # 5 rows x 7 cols — slimmer octopus with curling tentacles
+    # 5 rows x 7 cols - slimmer octopus with curling tentacles
     "octopus": {
         "theme": ["wisdom", "debugging"],
         "mini":  "({e}.{e})",
@@ -400,7 +410,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 11 cols — antenna stalks, spiral shell, body extending right
+    # 4 rows x 11 cols - antenna stalks, spiral shell, body extending right
     "snail": {
         "theme": ["patience", "wisdom"],
         "mini":  "@({e})",
@@ -412,7 +422,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 11 cols — domed shell, segmented body with eyes, four legs
+    # 4 rows x 11 cols - domed shell, segmented body with eyes, four legs
     "turtle": {
         "theme": ["patience", "wisdom"],
         "mini":  "({e}.{e})",
@@ -424,7 +434,7 @@ SPECIES = {
         ],
     },
 
-    # 3 rows x 9 cols — wide shell, claws extending sideways, legs below
+    # 3 rows x 9 cols - wide shell, claws extending sideways, legs below
     "crab": {
         "theme": ["chaos", "patience"],
         "mini":  "<({e}_{e})>",
@@ -435,8 +445,7 @@ SPECIES = {
         ],
     },
 
-    # 5 rows x 7 cols — head with beak, body, flippers, feet
-    # Source: https://www.asciiart.eu/animals/birds-land
+    # 5 rows x 7 cols - head with beak, body, flippers, feet; via asciiart.eu
     "penguin": {
         "theme": ["debugging", "patience"],
         "mini":  "({e}<",
@@ -449,7 +458,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 7 cols — symmetric fish (Max, user-provided)
+    # 4 rows x 7 cols - symmetric fish, via asciiart.eu
     "fish": {
         "theme": ["wisdom", "patience"],
         "mini":  "({e}_)<",
@@ -461,7 +470,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 11 cols — sitting dog (Joan G. Stark; signature stripped
+    # 4 rows x 11 cols - sitting dog (Joan G. Stark; signature stripped
     # from render, credit in ART_CREDITS).
     "dog": {
         "theme": ["patience", "chaos"],
@@ -474,8 +483,8 @@ SPECIES = {
         ],
     },
 
-    # 5 rows x 12 cols — the classic cowsay cow (trimmed to 5 rows).
-    # Source: https://github.com/piuccio/cowsay (default.cow)
+    # 5 rows x 12 cols - the well-known cowsay cow, trimmed to 5 rows;
+    # via asciiart.eu
     "cow": {
         "theme": ["patience", "wisdom"],
         "mini":  "({e}{e})",
@@ -488,7 +497,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 5 cols — antenna, screen face, boxy body, feet
+    # 4 rows x 5 cols - antenna, screen face, boxy body, feet
     "robot": {
         "theme": ["debugging", "patience"],
         "mini":  "[{e}.{e}]",
@@ -500,7 +509,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 7 cols — very round, fully closed loop
+    # 4 rows x 7 cols - very round, fully closed loop
     "chonk": {
         "theme": ["patience", "snark"],
         "mini":  "({e} {e})",
@@ -512,7 +521,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 11 cols — pig with curly tail (user-provided design)
+    # 4 rows x 11 cols - pig with curly tail, via asciiart.eu
     "pig": {
         "theme": ["patience", "chaos"],
         "mini":  "({e}{e})",
@@ -524,7 +533,7 @@ SPECIES = {
         ],
     },
 
-    # 4 rows x 7 cols — bird side profile (mrf design; signature stripped).
+    # 4 rows x 7 cols - bird side profile (mrf design; signature stripped).
     "bird": {
         "theme": ["chaos", "wisdom"],
         "mini":  ">{e} )",
@@ -536,7 +545,7 @@ SPECIES = {
         ],
     },
 
-    # 5 rows x 6 cols — chicken with wing flap. Row 0 is an empty
+    # 5 rows x 6 cols - chicken with wing flap. Row 0 is an empty
     # placeholder (was a `\` feather; removed) so hats land on row 0
     # without overwriting the actual head at row 1.
     "chicken": {

@@ -10,10 +10,10 @@ assignees: ''
 <!-- Briefly describe what you saw vs what you expected. -->
 
 **Render dump**
-<!-- Paste the output of this command — it tells me exactly what your terminal is being sent: -->
+<!-- Paste the output of this command - it tells me exactly what your terminal is being sent: -->
 
 ```
-$ python3 ~/.claude/buddy/statusline.py < /dev/null
+$ python3 ~/.claude/questline/statusline.py < /dev/null
 (paste output here)
 ```
 

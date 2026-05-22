@@ -1,4 +1,4 @@
-"""Ambient top-down adventure for the buddy status line.
+"""Ambient top-down adventure for the questline status line.
 
 The active pet walks rightward through a procedurally-generated landscape:
 the camera follows so the pet stays at a fixed left-side column, and the
@@ -36,7 +36,7 @@ BATTLE_GAP = 14             # monster_col - buddy_col when fighting starts
 #   col BUDDY_PANEL_WIDTH-1 : last col inside the panel
 #   col BUDDY_PANEL_WIDTH+ : the scrolling landscape
 #
-# The panel width is fixed regardless of the pet's sprite width — that
+# The panel width is fixed regardless of the pet's sprite width - that
 # decouples landscape feature placement from sprite_w so switching pets
 # leaves the trees / trunks / grass in the same screen columns. Max
 # sprite width is 16 (cow), so 21 cols fits any pet + 3-col front
@@ -54,7 +54,7 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 # Two body shapes:
 #   _small_tree() : the classic 2-wide /\ pine, 4 rows tall, fits anywhere.
 #   _big_tree()   : odd-width pyramidal canopy with || trunk centered.
-# Both end with a trunk row that stamps ONLY || — surrounding cols are
+# Both end with a trunk row that stamps ONLY || - surrounding cols are
 # spaces so the dark-green ground texture flows under the canopy instead
 # of being overwritten by a brown bar.
 
@@ -122,41 +122,41 @@ def _christmas_tree(rate):
 
 # --- Ground feature catalog ------------------------------------------------
 # Spawn rates tuned for a forest that looks lived-in without being crowded.
-# Rates are independent — each world position rolls a single feature pick
+# Rates are independent - each world position rolls a single feature pick
 # against the cumulative sum.
 
 GROUND_FEATURES = [
-    # Small classic /\ pines — 2 wide, 4 rows, three color shades so a
+    # Small classic /\ pines - 2 wide, 4 rows, three color shades so a
     # forest of them looks varied instead of mass-produced.
     _small_tree(0.013, "pine_green"),
     _small_tree(0.012, "forest_green"),
     _small_tree(0.010, "lime_green"),
 
-    # Standard pyramidal trees — 7 wide, 5 rows. Two color variants.
+    # Standard pyramidal trees - 7 wide, 5 rows. Two color variants.
     _big_tree(0.009, "forest_green"),
     _big_tree(0.009, "green"),
 
-    # Big variant — 7-row canopy that fills the world height. Rare; ends
+    # Big variant - 7-row canopy that fills the world height. Rare; ends
     # up as an occasional landmark on the horizon.
     _big_tree(0.0005, "sage_green", extra_rows=2),
     _big_tree(0.0005, "pine_green", extra_rows=2),
 
-    # Wider sizes — chunkier landmarks, even rarer.
+    # Wider sizes - chunkier landmarks, even rarer.
     _big_tree(0.0004, "forest_green", tree_w=9),
     _big_tree(0.0002, "lime_green",   tree_w=11),
 
     # Ultra-rare Christmas tree (~1 in 20 000 world cols).
     _christmas_tree(0.00005),
 
-    # Bushes — 2 rows, 5 cols wide.
+    # Bushes - 2 rows, 5 cols wide.
     {"rate": 0.022, "color": "lime_green",
      "art": ["(***)", " \\*/ "]},
 
-    # Grass tufts — single-row.
+    # Grass tufts - single-row.
     {"rate": 0.018, "color": "forest_green", "art": [",,,"]},
     {"rate": 0.014, "color": "lime_green",   "art": ["vvv"]},
 
-    # Flowers — 2 rows: red @ bloom over a green | stem.
+    # Flowers - 2 rows: red @ bloom over a green | stem.
     {"rate": 0.018, "color": "green",
      "char_colors": {"@": "red"},
      "art": ["\\@/", "*|*"]},
@@ -233,14 +233,14 @@ def encounter_seed(pos):
 
 # Pre-compute the big-tree subset + christmas-tree handle once at import.
 # (Doing this on every render walked the GROUND_FEATURES list twice per
-# step — small but adds up since statusline.py runs every render.)
+# step - small but adds up since statusline.py runs every render.)
 _BIG_TREES   = [f for f in GROUND_FEATURES if len(f["art"]) >= 6]
 _XMAS_TREE   = next((f for f in _BIG_TREES if "[" in "".join(f["art"])), None)
 _XMAS_LIMIT  = 50  # max world positions to remember as "already collected"
 
 # --- Sky features ----------------------------------------------------------
 # Features that float IN THE AIR (above the canopy) instead of sitting on
-# the ground. Populated only by seasonal events — outside holidays, the
+# the ground. Populated only by seasonal events - outside holidays, the
 # sky is clean.
 SKY_FEATURES = []
 
@@ -262,7 +262,7 @@ def _apply_seasonal_events():
     now = time.localtime()
     month, day = now.tm_mon, now.tm_mday
 
-    # NEW YEAR (Dec 31 - Jan 7) — confetti floats in the air, falling
+    # NEW YEAR (Dec 31 - Jan 7) - confetti floats in the air, falling
     # toward the ground. Three colors interleaved for sparkle.
     if (month == 12 and day == 31) or (month == 1 and day <= 7):
         SKY_FEATURES.append({
@@ -271,21 +271,21 @@ def _apply_seasonal_events():
             "art": [".'."],
         })
 
-    # VALENTINE'S (Feb 10-16) — pink hearts speckle the ground.
+    # VALENTINE'S (Feb 10-16) - pink hearts speckle the ground.
     if month == 2 and 10 <= day <= 16:
         GROUND_FEATURES.append({
             "rate": 0.020, "color": "pink",
             "art": ["<3"],
         })
 
-    # ST PATRICK'S (Mar 17) — lime-green clovers all over.
+    # ST PATRICK'S (Mar 17) - lime-green clovers all over.
     if month == 3 and day == 17:
         GROUND_FEATURES.append({
             "rate": 0.030, "color": "lime_green",
             "art": ["%%"],
         })
 
-    # INDEPENDENCE DAY (Jul 4) — red/white/blue fireworks in the sky.
+    # INDEPENDENCE DAY (Jul 4) - red/white/blue fireworks in the sky.
     if month == 7 and day == 4:
         SKY_FEATURES.append({
             "rate": 0.030, "color": "red",
@@ -293,7 +293,7 @@ def _apply_seasonal_events():
             "art": ["\\+/"],
         })
 
-    # HALLOWEEN (October) — orange pumpkins on the ground.
+    # HALLOWEEN (October) - orange pumpkins on the ground.
     if month == 10:
         GROUND_FEATURES.append({
             "rate": 0.025, "color": "orange",
@@ -301,7 +301,7 @@ def _apply_seasonal_events():
             "art": ["(o)"],
         })
 
-    # CHRISTMAS (December) — christmas tree spawn rate jumps 100x.
+    # CHRISTMAS (December) - christmas tree spawn rate jumps 100x.
     if month == 12 and _XMAS_TREE is not None:
         _XMAS_TREE["rate"] = min(0.01, _XMAS_TREE["rate"] * 100)
 
@@ -331,18 +331,18 @@ def _is_xmas_tree_at(pos):
     return _pick_feature(pos, _BIG_TREES, 89) is _XMAS_TREE
 
 
-def _xmas_gift(sv, pos):
+def _xmas_gift(sv, pet, pos):
     """Open the present at this Christmas tree if not already opened.
     Returns the dropped hat dict (also appended to inventory), or None
     if this position was already collected. Position-seeded so the same
     tree always gives the same hat."""
     from data import HATS
-    st = _state(sv)
+    st = _state(pet)
     collected = st.setdefault("xmas_collected", [])
     if pos in collected:
         return None
     collected.append(pos)
-    # Bounded history — even at extreme play, 50 trees is plenty.
+    # Bounded history - even at extreme play, 50 trees is plenty.
     if len(collected) > _XMAS_LIMIT:
         del collected[:-_XMAS_LIMIT]
     rng = random.Random(pos * 9999 + 7)
@@ -361,9 +361,11 @@ def _xmas_gift(sv, pos):
 
 # --- Save-state helpers ----------------------------------------------------
 
-def _state(sv):
-    """Get-or-init the 'adventure' sub-dict of the save. Idempotent."""
-    st = sv.setdefault("adventure", {})
+def _state(pet):
+    """Get-or-init this pet's 'adventure' sub-dict. Each pet walks its own
+    world, so walk position, foes defeated, and the combat log all live on
+    the pet rather than on the save as a whole. Idempotent."""
+    st = pet.setdefault("adventure", {})
     st.setdefault("buddy_col", 0)
     st.setdefault("last_tick", time.time())
     st.setdefault("encounter", None)
@@ -406,7 +408,7 @@ def _combat_turn(sv, pet, st):
     enc["turn"] += 1
 
     # Turns 1-2: pure visual ticks (we used to render attack glyphs here,
-    # but they overlapped tree art badly — narration in the info row now).
+    # but they overlapped tree art badly - narration in the info row now).
     if enc["turn"] in (1, 2):
         return [{"type": "attack",
                  "attacker": "buddy" if enc["turn"] == 1 else "monster"}]
@@ -453,7 +455,7 @@ def advance(sv, pet):
     render. Walks the pet right, runs encounter approach/fight sequencing,
     and claims Christmas tree gifts as the pet walks past them. Returns
     a list of events for the caller (typically the status line) to surface."""
-    st = _state(sv)
+    st = _state(pet)
     now = time.time()
     elapsed = max(0, now - st.get("last_tick", now))
     st["last_tick"] = now
@@ -479,12 +481,12 @@ def advance(sv, pet):
             events.extend(_combat_turn(sv, pet, st))
             continue
 
-        # No encounter — walk right one col + check for Christmas tree + roll for spawn.
+        # No encounter - walk right one col + check for Christmas tree + roll for spawn.
         st["buddy_col"] += 1
         st["steps"] = st.get("steps", 0) + 1
 
         if _is_xmas_tree_at(st["buddy_col"]):
-            gift = _xmas_gift(sv, st["buddy_col"])
+            gift = _xmas_gift(sv, pet, st["buddy_col"])
             if gift:
                 _log(st, "xmas gift +%s %s" % (gift["rarity"], gift["type"]))
                 events.append({"type": "xmas_gift", "drop": gift})
@@ -503,7 +505,7 @@ def advance(sv, pet):
 def _stamp(grid, art, col, row, color, width, char_colors=None):
     """Paint a multi-line sprite onto the grid. Spaces in `art` pass through
     (don't overwrite what's already there). `char_colors` lets a feature
-    override the color of specific glyphs — e.g. the Christmas tree's red
+    override the color of specific glyphs - e.g. the Christmas tree's red
     ornaments on top of its green crown."""
     for i, line in enumerate(art):
         r = row + i
@@ -542,14 +544,14 @@ def _hat_top_left(sprite, sprite_w, hat_w, buddy_screen):
             break
     if head_center is None:
         return buddy_screen + max(0, (sprite_w - hat_w) // 2)
-    # int(x + 0.5) for half-up rounding — Python's round() uses banker's
+    # int(x + 0.5) for half-up rounding - Python's round() uses banker's
     # rounding so round(0.5)==0 would shift hats one col left.
     return buddy_screen + int(head_center - hat_w / 2 + 0.5)
 
 
 def _stamp_hat(grid, sprite, sprite_top, sprite_w, buddy_screen, hat, width):
     """Paint a multi-row hat above the pet. The bottom row sits ON sprite
-    row 0 (the head) — wipes spaces too so head chars don't peek through
+    row 0 (the head) - wipes spaces too so head chars don't peek through
     the hat's interior gaps."""
     from data import HATS, RARITY_COLOR
     hat_lines = HATS.get(hat["type"], [""])
@@ -579,13 +581,13 @@ def _stamp_hat(grid, sprite, sprite_top, sprite_w, buddy_screen, hat, width):
 
 
 def _place_sky_features(grid, cam, width):
-    """Sprinkle SKY_FEATURES (seasonal-only — fireworks, confetti, etc.)
+    """Sprinkle SKY_FEATURES (seasonal-only - fireworks, confetti, etc.)
     across the top rows of the world. Each feature is dropped at a
     deterministic-per-position row in [0, sky_max] so the sky has visual
     depth instead of every burst on the same line."""
     if not SKY_FEATURES:
         return
-    sky_max = 2  # rows 0..2 — above any normal canopy
+    sky_max = 2  # rows 0..2 - above any normal canopy
     last_end = -100
     for c in range(BUDDY_PANEL_WIDTH, width):
         if c < last_end + 3:
@@ -694,7 +696,7 @@ def _render_grid(grid):
 def render_world(sv, pet, width=140):
     """Render the full world for one frame: ground line, landscape features,
     pet sprite, back-wall anchor, hat, and (if present) enemy + alert."""
-    st = _state(sv)
+    st = _state(pet)
     cam = st["buddy_col"]
 
     sp = SPECIES[pet["species"]]
@@ -715,14 +717,14 @@ def render_world(sv, pet, width=140):
     # Landscape (trees, bushes, grass, flowers).
     _place_features(grid, cam, width, _enemy_protect_zone(st, cam))
 
-    # Seasonal sky features (fireworks, confetti) — placed AFTER ground
+    # Seasonal sky features (fireworks, confetti) - placed AFTER ground
     # features so they paint above the canopy. Most days this is a no-op.
     _place_sky_features(grid, cam, width)
 
     # Pet sprite (overstamps anything it lands on inside the panel).
     _stamp(grid, sprite, buddy_screen, sprite_top, lvl_color, width)
 
-    # Vertical back-wall at col 0 — paint it on every row that has content
+    # Vertical back-wall at col 0 - paint it on every row that has content
     # AND every row BETWEEN content rows, so an empty middle row (e.g.
     # confetti at row 0 + canopy starting at row 2) doesn't show a gap in
     # the wall. Rows above the topmost content row get NO wall, so the

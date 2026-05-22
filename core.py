@@ -1,15 +1,19 @@
-"""Core buddy logic: save model, pet generation, leveling, drops, rendering.
+"""Core questline logic: save model, pet generation, leveling, drops, rendering.
 
-This module is the shared library that both `statusline.py` (the per-render
-status-line entry point) and `cli.py` (the /buddy subcommand dispatcher)
-import from. It owns the save file format, the RNG primitives, the
-leveling math, and the helpers that turn raw save state into colored
-ASCII output.
+This module is the shared library behind both `statusline.py` (the
+per-render status-line entry point) and `cli.py` (the /questline subcommand
+dispatcher). It owns the save file format, the RNG primitives, the leveling
+math, and the helpers that turn raw save state into colored ASCII output.
 """
 
 import json, os, random
 from pathlib import Path
 from datetime import date
+
+try:
+    import fcntl                       # POSIX advisory file locking
+except ImportError:                    # Windows: no flock; _SaveLock no-ops
+    fcntl = None
 
 from data import (
     STATS, SALT, SPECIES, SPECIES_TIERS, PET_RARITY_TABLE,
@@ -20,7 +24,11 @@ from data import (
 
 # Where the save file lives. Always inside the user's Claude config home
 # so it survives reinstalls and is gitignored when this repo is cloned.
-SAVE_PATH = Path.home() / ".claude" / "buddy" / "save.json"
+# _LEGACY_SAVE_PATH is the pre-rename ("buddy") location; load() migrates
+# from it once so players who installed before the rename keep their pets.
+_DEFAULT_SAVE_PATH = Path.home() / ".claude" / "questline" / "save.json"
+_LEGACY_SAVE_PATH  = Path.home() / ".claude" / "buddy" / "save.json"
+SAVE_PATH = _DEFAULT_SAVE_PATH
 
 # Claude Code stores the user's local config (incl. their userID, which we
 # use as the seed for the starter pet) here. Read once at first-pet time.
@@ -36,7 +44,7 @@ def today():
 # We need a deterministic, portable hash + RNG so that the SAME user gets
 # the SAME starter pet across reinstalls. Python's hash() is randomized
 # per-process and random.Random's algorithm isn't guaranteed across
-# versions — so we ship our own FNV-1a + Mulberry32.
+# versions - so we ship our own FNV-1a + Mulberry32.
 
 def fnv1a_32(s):
     """32-bit FNV-1a hash of a string. Deterministic, portable, fast."""
@@ -49,7 +57,7 @@ def fnv1a_32(s):
 
 def mulberry32(seed):
     """Tiny seedable PRNG. Returns a callable that yields floats in [0, 1).
-    Picked because it's stable across language ports — the same seed gives
+    Picked because it's stable across language ports - the same seed gives
     the same sequence everywhere."""
     state = [seed & 0xFFFFFFFF]
 
@@ -67,14 +75,14 @@ def mulberry32(seed):
 
 
 def random_rng():
-    """Non-deterministic Mulberry32 seeded from os.urandom — used for
+    """Non-deterministic Mulberry32 seeded from os.urandom - used for
     'hatch me a fresh random pet' where we don't want reproducibility."""
     return mulberry32(int.from_bytes(os.urandom(4), "big"))
 
 
 def get_user_id():
     """Read the Claude Code userID from ~/.claude.json. Falls back to
-    'anon' if the file is missing or malformed — the starter pet is then
+    'anon' if the file is missing or malformed - the starter pet is then
     deterministic-per-machine instead of deterministic-per-user."""
     try:
         return json.loads(CLAUDE_JSON.read_text()).get("userID", "anon")
@@ -101,12 +109,25 @@ def _fresh():
 
 def load():
     """Read and validate save.json. Returns a fresh save if the file is
-    missing, malformed, or has wrong-type top-level fields. Never raises."""
-    if SAVE_PATH.exists():
+    missing, malformed, or has wrong-type top-level fields. Never raises.
+
+    Migrations run here: the save location moved when the project was
+    renamed (buddy -> questline); the adventure state moved from one shared
+    dict into each pet (_migrate_adventure); and every pet's level is
+    re-derived from its lifetime XP (_recompute_level) so a change to the
+    XP curve can never leave a stored level inconsistent with it."""
+    path = SAVE_PATH
+    # Pre-rename saves lived under ~/.claude/buddy. Read from there if the
+    # new location is empty. Gated on the default path so the test suite,
+    # which points SAVE_PATH at a tempdir, never picks up a real save.
+    if (path == _DEFAULT_SAVE_PATH and not path.exists()
+            and _LEGACY_SAVE_PATH.exists()):
+        path = _LEGACY_SAVE_PATH
+    if path.exists():
         try:
-            d = json.loads(SAVE_PATH.read_text())
+            d = json.loads(path.read_text())
             if isinstance(d, dict) and d.get("version") == 2:
-                # Defensive type normalization — a hand-edited save with
+                # Defensive type normalization: a hand-edited save with
                 # wrong-type fields would otherwise crash downstream renders.
                 if not isinstance(d.get("pets"), dict):
                     d["pets"] = {}
@@ -117,10 +138,45 @@ def load():
                 d.setdefault("next_id", 1)
                 d.setdefault("next_iid", 1)
                 d.setdefault("active", None)
+                _migrate_adventure(d)
+                for _pet in d["pets"].values():
+                    _recompute_level(_pet)
                 return d
         except Exception:
             pass
     return _fresh()
+
+
+def _migrate_adventure(d):
+    """Older saves kept one shared `adventure` dict for the whole save.
+    Each pet now walks its own world, so move the legacy shared state onto
+    the active pet (others start fresh). Idempotent: a no-op once migrated."""
+    legacy = d.pop("adventure", None)
+    if isinstance(legacy, dict) and d.get("pets"):
+        target = (d["pets"].get(d.get("active"))
+                  or next(iter(d["pets"].values())))
+        target.setdefault("adventure", legacy)
+
+
+def _recompute_level(pet):
+    """Re-derive a pet's level, xp, and earned stats from its lifetime XP
+    (total_tokens) against the current curve. Run on every load so a change
+    to xp_to_next can never leave a stored level inconsistent. Idempotent:
+    a pet already in sync recomputes to exactly the same values."""
+    total = pet.get("total_tokens", 0) or 0
+    level, xp = 1, total
+    while xp >= xp_to_next(level):
+        xp -= xp_to_next(level)
+        level += 1
+    pet["level"] = level
+    pet["xp"] = xp
+    # Re-grant per-level stat points. grow_stats is seeded from pet id +
+    # level, so replaying levels 2..level reproduces exactly what the
+    # level-ups awarded, and correctly lowers stats for a demoted pet.
+    if pet.get("species") in SPECIES and "earned_stats" in pet:
+        pet["earned_stats"] = {s: 0 for s in STATS}
+        for lvl in range(2, level + 1):
+            grow_stats(pet, random.Random("%s-L%d" % (pet.get("id", "p"), lvl)))
 
 
 def save(d):
@@ -130,6 +186,45 @@ def save(d):
     tmp = SAVE_PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(d, indent=2))
     tmp.replace(SAVE_PATH)
+
+
+class _SaveLock:
+    """Advisory exclusive lock held across a whole load -> mutate -> save
+    transaction. Without it, two terminals rendering at the same instant
+    both read the save, both write, and the second write silently drops
+    the first one's update (lost XP, a lost pet hatch). flock serializes
+    them. On platforms without fcntl (Windows) this degrades to a no-op
+    and concurrent writes fall back to last-writer-wins."""
+
+    def __enter__(self):
+        self._fh = None
+        if fcntl is None:
+            return self
+        try:
+            SAVE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            self._fh = open(str(SAVE_PATH) + ".lock", "w")
+            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX)
+        except Exception:
+            if self._fh is not None:
+                try:
+                    self._fh.close()
+                except Exception:
+                    pass
+            self._fh = None
+        return self
+
+    def __exit__(self, *exc):
+        if self._fh is not None:
+            try:
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+            finally:
+                self._fh.close()
+        return False
+
+
+def save_lock():
+    """Context manager: `with core.save_lock(): ...` around a load/save."""
+    return _SaveLock()
 
 
 # --- Pet generation --------------------------------------------------------
@@ -176,8 +271,7 @@ def gen_pet(sv, rng):
         "earned_stats": {s: 0 for s in STATS},
         "level": 1, "xp": 0, "total_tokens": 0,
         "equipped_hat": None,
-        "color_choice": None,    # /buddy color override (None = auto by level)
-        "wins": 0, "losses": 0,
+        "color_choice": None,    # /questline color override (None = auto by level)
         "hatched_at": today(),
     }
 
@@ -213,7 +307,7 @@ def active_pet(sv):
 def active_pet_for_session(sv, session_id):
     """Return the pet currently earning XP in THIS terminal session.
 
-    Each terminal can pin its own active pet via `/buddy switch <n>` —
+    Each terminal can pin its own active pet via `/questline switch <n>` -
     so terminal A can be leveling Biscuit while terminal B grinds Eight.
     The pin lives in sv['session_pets'][session_id]; if missing, falls
     back to the global default sv['active']."""
@@ -223,7 +317,7 @@ def active_pet_for_session(sv, session_id):
     sp  = sv.get("session_pets", {})
     pid = sp.get(session_id) or sv.get("active")
     if pid not in pets:
-        # Stale pin (pet was deleted?) — fall back to whatever's available
+        # Stale pin (pet was deleted?) - fall back to whatever's available
         # and update the global default so future renders don't bounce.
         pid = next(iter(pets))
         sv["active"] = pid
@@ -251,7 +345,7 @@ def total_stats(pet):
 
 
 def color_for_level(level):
-    """The natural color for a pet's level band — what it renders in by
+    """The natural color for a pet's level band - what it renders in by
     default (no manual override)."""
     for thr, col in LEVEL_COLOR_BANDS:
         if level <= thr:
@@ -269,7 +363,7 @@ def unlocked_colors(level):
     Lvl 100 -> all seven (silver and gold)
 
     A pet may downgrade to any color it has unlocked via the
-    /buddy color subcommand, but the choice is cosmetic only."""
+    /questline color subcommand, but the choice is cosmetic only."""
     unlocked = []
     for thr, col in LEVEL_COLOR_BANDS:
         unlocked.append(col)
@@ -307,11 +401,11 @@ def grow_stats(pet, rng):
 def make_drop(sv, rng, level=1):
     """Generate one random hat drop. Rarity is rolled with a small
     level-scaled boost so higher-level pets get rarer hats more often,
-    but Mythic stays a chase — even at L100, only ~1 in 5 drops is
+    but Mythic stays a chase - even at L100, only ~1 in 5 drops is
     Mythic. The boost effectively subtracts from the roll, pushing it
     toward the lower (rarer) thresholds in ITEM_RARITY_TABLE.
 
-    Mythic stays a chase at every level — even a maxed pet pulls it only
+    Mythic stays a chase at every level - even a maxed pet pulls it only
     ~5% of the time, and it's far rarer below max:
       L1   - 0.5% Mythic, 2.5% Legendary, 50% Common (vanilla)
       L25  - ~1.6% Mythic
@@ -352,7 +446,7 @@ def apply_xp(sv, pet, amount):
     while pet["xp"] >= xp_to_next(pet["level"]):
         pet["xp"] -= xp_to_next(pet["level"])
         pet["level"] += 1
-        # Per-level RNG seeded from pet id + level — deterministic so a
+        # Per-level RNG seeded from pet id + level - deterministic so a
         # given pet always gains the same stats at the same level.
         rng = random.Random("%s-L%d" % (pet["id"], pet["level"]))
         gains = grow_stats(pet, rng)
@@ -368,7 +462,7 @@ def apply_xp(sv, pet, amount):
 
 
 # --- Sleep state ----------------------------------------------------------
-# A pet that hasn't earned any XP in 24+ hours is "sleeping" — shown with
+# A pet that hasn't earned any XP in 24+ hours is "sleeping" - shown with
 # a small `zZz` indicator in the status line. As soon as new tokens arrive
 # from the active terminal, apply_xp updates last_xp_at and the pet wakes.
 
@@ -452,7 +546,7 @@ def update_streak(sv):
 
 def get_equipped(sv, pet, slot):
     """The inventory entry currently equipped in `slot` on this pet, or
-    None. Only "hat" is a real slot — held items existed in an earlier
+    None. Only "hat" is a real slot - held items existed in an earlier
     draft and were removed."""
     if slot != "hat":
         return None
@@ -521,7 +615,7 @@ def item_label(it):
 
 
 def render_sprite(sv, pet):
-    """Multi-line ASCII sprite for the CLI (NOT the status line — that's
+    """Multi-line ASCII sprite for the CLI (NOT the status line - that's
     in adventure.render_world). Hat rows are stacked above the sprite for
     legibility; in the world view they overlap the head row instead."""
     sp = SPECIES[pet["species"]]
@@ -541,7 +635,7 @@ def render_sprite(sv, pet):
 
 
 def mini_face(pet):
-    """One-line compact face, e.g. for the /buddy list summary."""
+    """One-line compact face, e.g. for the /questline list summary."""
     sp = SPECIES[pet["species"]]
     return c(sp["mini"].replace("{e}", pet["eyes"]), color_for_pet(pet))
 

@@ -22,12 +22,19 @@ SOFTWARE.
 
 ---
 
-ASCII art attributions (see data.py ART_CREDITS for the live list):
-  - fish:    Max (user-provided design)
-  - pig:     Unknown — user-provided design
-  - bird:    mrf (signature stripped from render, credited here)
-  - chicken: Unknown — user-provided design
-  - cat:     asciiart.eu (canonical 3-row cat face)
-  - dog:     Joan G. Stark (jgs) — classic sitting-dog ASCII
-  - cow:     Tony Monroe / cowsay default.cow
-             https://en.wikipedia.org/wiki/Cowsay
+ASCII art attribution
+
+The species sprites are adapted from the ASCII Art Archive (asciiart.eu),
+reused under its stated terms: free use for a non-commercial project as long
+as the artist is credited. Sprites this small (3-5 rows) cannot legibly
+carry an in-art signature, so where the original was signed the artist is
+credited here instead. See data.py ART_CREDITS for the live per-sprite list.
+
+  - dog      Joan G. Stark (jgs), via asciiart.eu
+  - bird     mrf, via asciiart.eu
+  - fish     via asciiart.eu (initials "Max" in the original)
+  - cat      via asciiart.eu (traditional unsigned design)
+  - cow      via asciiart.eu (the well-known cowsay cow)
+  - pig      via asciiart.eu (unsigned)
+  - chicken  via asciiart.eu (unsigned)
+  - penguin  via asciiart.eu (unsigned)
